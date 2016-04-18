@@ -1,0 +1,13 @@
+# Ignore DS files:
+*.DS_Store
+
+# Ignore various folders:
+bash_scripts/**
+logs/**
+NOT_NECESSARY/**
+plots/**
+RESULTS/**
+santiRESULTS/**
+
+#Temp for EUCLID new data:
+*header.pxi
