@@ -9,12 +9,12 @@ plots/**
 RESULTS/**
 santiRESULTS/**
 modules/build/**
+INPUT/**
+OUTPUT/**
 
 # Not sure working:
-modules/**/*.so
+modules/*.so
 modules/*.c
-modules/*.o
-OUTPUT/*.csv
 
 # Temp for EUCLID new data:
 *header.pxi
