@@ -16,7 +16,6 @@ def init():
     compute_survey_DATA()
     store_int1()
 
-
 #---------------------------------------
 # CONVOLVED SPECTRA:
 #---------------------------------------
@@ -122,7 +121,7 @@ def test_growth(bin, k, mu):
 cdef double der_type_A(int bin,  int var_num, double k,double mu):
     return observed_terms(bin, k, mu) * numerical_paramDER(k,bin,var_num)
 
-# Om_b, Om_c, w_p and w_1: (optimized!) (var 2-5)
+# Om_b, Om_c, w_0 and w_1: (optimized!) (var 2-5)
 cdef double der_type_B(int bin, int var_num, double k, double mu):
     cdef double CAMB_term
     if var_num<=3: #Om_b, Om_c
@@ -146,7 +145,7 @@ cdef double der_sigma8(int bin, double k, double mu):
 # Bias: (9 derivatives) (bad optimized....) (var>=7)
 cdef double der_bias(int bin, double k, double mu, int bin_bias) except -1:
     if bin==bin_bias:
-        result =observed_spectrum(bin, k, mu) * 2 * (1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_p=ref_values['w_p'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2) )
+        result =observed_spectrum(bin, k, mu) * 2 * (1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2) )
         return(result)
     else:
         return(0.)
@@ -156,7 +155,7 @@ cdef double der_bias(int bin, double k, double mu, int bin_bias) except -1:
 cdef double DER(double k, double mu, int var_num, int bin):
     if var_num+1<=2: #h and n_s
         return(der_type_A(bin,var_num,k,mu))
-    elif var_num+1<=6: # Om_b, Om_c, w_p and w_1:
+    elif var_num+1<=6: # Om_b, Om_c, w_0 and w_1:
         return(der_type_B(bin,var_num,k,mu))
     elif var_num+1==7: #sigma8
         return(der_sigma8(bin,k,mu))

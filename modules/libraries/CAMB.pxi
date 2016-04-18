@@ -76,7 +76,7 @@ def compute_CAMB_spectra(N_points=290,mink=1e-5,maxk=1.55,compute_CAMB = False):
         pars.InitPower.set_params(As=2.1*1e-9, nrun=0, nrunrun=0, r=0, nt=None, ntrun=0, pivot_scalar=0.05, pivot_tensor=0.05, parameterization=2)
 
         pars.set_cosmology(H0=h*100, ombh2=omb*h**2, omch2=omc*h**2)
-        pars.set_dark_energy(w=ref_values["w_p"])
+        pars.set_dark_energy(w=ref_values["w_0"])
         pars.InitPower.set_params(ns=ns)
         print "\nComputing spectrum and derivatives with CAMB:"
         print " - reference spectrum,"

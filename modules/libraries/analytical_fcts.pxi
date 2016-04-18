@@ -9,7 +9,7 @@
 #--------------------------------
 # Start defining some variable:
 #--------------------------------
-Om_c, h, Om_b, w_p, w_1, n_s, gamma, sigma8 = sym.symbols('Om_c h Om_b w_p w_1 n_s gamma sigma8')
+Om_c, h, Om_b, w_0, w_1, n_s, gamma, sigma8 = sym.symbols('Om_c h Om_b w_0 w_1 n_s gamma sigma8')
 
 # Other variables:
 z = sym.symbols('z')
@@ -19,7 +19,7 @@ zx = sym.symbols('zx') #Actually this is always a number...
 # Pivot redshift:
 z_p = 0
 # Cosmological constant w(z):
-w = w_p + w_1*(z-z_p)
+w = w_0 + w_1*(z-z_p)
 
 # Dark Energy density (flat universe k=0):
 Omega_DE = 1 - (Om_b+Om_c)
@@ -30,15 +30,15 @@ Omega_DE = 1 - (Om_b+Om_c)
 #-----------------------------------------
 
 # Hubble parameter: (diveded by H_0)
-Hub = sym.sqrt( (Om_c+Om_b)*(1+z)**3 + Omega_DE*sym.exp(3* sym.integrate( (1+w.subs(z,zx))/(1+zx), (zx,0,z)) ) ) #[z, w_1, w_p, Om_m]
+Hub = sym.sqrt( (Om_c+Om_b)*(1+z)**3 + Omega_DE*sym.exp(3* sym.integrate( (1+w.subs(z,zx))/(1+zx), (zx,0,z)) ) ) #[z, w_1, w_0, Om_m]
 
 # Comoving distance in Mpc/h:
-def comov_dist(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_p=ref_values['w_p'],w_1=ref_values['w_1']):
-    return c_H0*NInt(1/Hub,z,0,zx, w_1=w_1, Om_b=Om_b, Om_c=Om_c, w_p=w_p)
+def comov_dist(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_0=ref_values['w_0'],w_1=ref_values['w_1']):
+    return c_H0*NInt(1/Hub,z,0,zx, w_1=w_1, Om_b=Om_b, Om_c=Om_c, w_0=w_0)
 
 # Angular diameter distance: (in units of c/H_0)
-def D_a(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_p=ref_values['w_p'],w_1=ref_values['w_1']):
-    return 1./(1+zx)*comov_dist(zx,Om_b,Om_c,w_p,w_1)
+def D_a(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_0=ref_values['w_0'],w_1=ref_values['w_1']):
+    return 1./(1+zx)*comov_dist(zx,Om_b,Om_c,w_0,w_1)
 
 
 #--------------------------------------------------------------
@@ -49,11 +49,11 @@ Om_m_z = (Om_c+Om_b)* (1+z)**3 / Hub**2
 #Om_m_z_fct = fnExpr(Om_m_z)
 Om_m_z_py = SymToPy(Om_m_z)
 
-def Growth(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_p=ref_values['w_p']):
-    return np.exp( NInt( Om_m_z**gamma/(1+z), z, zx, 0, w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_p=w_p))
+def Growth(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0']):
+    return np.exp( NInt( Om_m_z**gamma/(1+z), z, zx, 0, w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0))
 
 def beta(bin):
-    return ( fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_p=ref_values['w_p'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] / bias_bins[bin] )
+    return ( fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] / bias_bins[bin] )
 
 #--------------------------------------------------------------
 # Volume of a shell and top-hat function:
@@ -99,7 +99,7 @@ def K_py(mod_k,bin1,bin2):
 # Compute k_max at each z: (actually here x_max is already k_max...)
 def sigma_8(x_max, zx):
     integral_k = quad(lambda kp: kp**2 * zero_spectrum(kp) * Fourier_W_k(kp*np.pi/(2*x_max))**2, k_min, k_max, epsrel=1e-3)[0]
-    integral_z = np.exp( -2. * NInt( Om_m_z**gamma/(1+z), z, 0., zx , gamma=ref_values['gamma'], w_1=ref_values['w_1'], w_p=ref_values['w_p'], Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'] ))
+    integral_z = np.exp( -2. * NInt( Om_m_z**gamma/(1+z), z, 0., zx , gamma=ref_values['gamma'], w_1=ref_values['w_1'], w_0=ref_values['w_0'], Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'] ))
     return 1/(2.*PI**2) * integral_z * integral_k
 
 def sigma_8_eq(x_max, zx):
@@ -110,10 +110,10 @@ def root_k_max(zx):
 
 
 #--------------------------------------------------------------
-# Analytical derivatives for Om_m, w_p, w_1 and gamma:
+# Analytical derivatives for Om_m, w_0, w_1 and gamma:
 #--------------------------------------------------------------
 
-four_parameters = ['Om_b', 'Om_c', 'w_p', 'w_1','gamma']
+four_parameters = ['Om_b', 'Om_c', 'w_0', 'w_1','gamma']
 mu, b_i, b_j = sym.symbols('mu b_i b_j')
 redshift_factor = (1+Om_m_z**gamma/b_i*mu**2) * (1+Om_m_z**gamma/b_j*mu**2)
 
@@ -122,8 +122,8 @@ redshift_factor = (1+Om_m_z**gamma/b_i*mu**2) * (1+Om_m_z**gamma/b_j*mu**2)
 lnG_der, Beta_der = {}, {}
 
 for var in four_parameters:
-    lnG_der[var] = lambda zx, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_p=ref_values['w_p'],var=var:  NInt(sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var))/(1+z), z, zx, 0., w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_p=w_p)
-    Beta_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_p=ref_values['w_p'], var=var: sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var)).subs([('w_1',w_1),('Om_b',Om_b),('Om_c',Om_c), ('gamma',gamma), ('w_p',w_p), ('z',z)])
+    lnG_der[var] = lambda zx, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0'],var=var:  NInt(sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var))/(1+z), z, zx, 0., w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0)
+    Beta_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], var=var: sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var)).subs([('w_1',w_1),('Om_b',Om_b),('Om_c',Om_c), ('gamma',gamma), ('w_0',w_0), ('z',z)])
 
 
 # Derivatives of k and mu wrt ln(H) and ln(D):
@@ -141,8 +141,8 @@ lnH_der, lnD_der = {}, {}
 
 for var in four_parameters: # num_var = [3-5] + gamma
     par = sym.symbols(var)
-    lnH_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_p=ref_values['w_p'], par=par:  (sym.diff(Hub,par)/Hub).subs([('w_1',w_1),('Om_b',Om_b),('Om_c',Om_c), ('w_p',w_p), ('z',z)])
-    lnD_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_p=ref_values['w_p'], var=var: 1./D_a(z,Om_b,Om_c,w_p,w_1) * 1./(1+z)*c_H0* (-1.) * quad(lambda zx: lnH_der[var](zx,Om_b,Om_c,w_1,w_p),0,z,epsrel=INT_PREC)[0]
+    lnH_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], par=par:  (sym.diff(Hub,par)/Hub).subs([('w_1',w_1),('Om_b',Om_b),('Om_c',Om_c), ('w_0',w_0), ('z',z)])
+    lnD_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], var=var: 1./D_a(z,Om_b,Om_c,w_0,w_1) * 1./(1+z)*c_H0* (-1.) * quad(lambda zx: lnH_der[var](zx,Om_b,Om_c,w_1,w_0),0,z,epsrel=INT_PREC)[0]
 
 
 # Derivative of mu wrt the four parameters: # num_var = [3-5] + gamma
@@ -346,8 +346,8 @@ def compute_survey_DATA():
     Growth_bins = np.array([Growth(zx) for zx in z_avg])
     beta_bins = np.array([ beta(bin) for bin in range(N_bins)])
     lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data = np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins])
-    #four_parameters = ['Om_m', 'w_p', 'w_1', 'gamma']
-    four_parameters = ['Om_b','Om_c', 'w_p', 'w_1']
+    #four_parameters = ['Om_m', 'w_0', 'w_1', 'gamma']
+    four_parameters = ['Om_b','Om_c', 'w_0', 'w_1']
     for var in four_parameters: # num_var = [3-5] + gamma
         for bin in range(N_bins):
             # for the first two also add bias:

@@ -8,6 +8,12 @@ NOT_NECESSARY/**
 plots/**
 RESULTS/**
 santiRESULTS/**
+modules/build/**
 
-#Temp for EUCLID new data:
+# Not sure working:
+*.so
+*.c
+*.o
+
+# Temp for EUCLID new data:
 *header.pxi
