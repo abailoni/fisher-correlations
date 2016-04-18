@@ -1,5 +1,5 @@
 ###########
-# Brunch:
+# Branch:
 ###########
 # - modified Trace that set k_max for the lower index (commented there is also the higher case)
 # - int1 with FFT (no AP term for the moment)
@@ -117,7 +117,7 @@ cdef double observed_terms(int bin1, int bin2, double k, double mu):
 cdef double der_type_A(int bin1, int bin2, double k,double mu, int var_num):
     return  observed_terms(bin1, bin2, k, mu)*windowed_DER(k, bin1, bin2, var_num)
 
-# Om_b, Om_c, w_p and w_1: (optimized!) (var 2-5)
+# Om_b, Om_c, w_0: (optimized!) (var 2-4)
 cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     cdef double CLASS_term
     if var_num<=3: #Om_b, Om_c
@@ -132,21 +132,20 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
     cdef np.intp_t avg_bin = (bin1+bin2)/2
-    cdef double temp = observed_terms(bin1, bin2, k, mu) * ( CLASS_term + derivative_k*CHECK_DER_K) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + lnH_der_data[var_num][avg_bin] - 2*lnD_der_data[var_num][avg_bin] + beta_term  )
-    return(temp)
+    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term + derivative_k*CHECK_DER_K) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + lnH_der_data[var_num][avg_bin] - 2*lnD_der_data[var_num][avg_bin] + beta_term  )
 
 # # Gamma: (optimized!) (var=6)
 # cdef double der_gamma(int bin1, int bin2, double k, double mu):
 #     # Pay attention to lnH_der_data that are computed in z_avg....
 #     return(observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[6][bin1]+lnG_der_data[6][bin2] + 1./(1+beta_bins[bin1]*mu**2)*(mu**2*Beta_der_data[6][bin1]) + 1./(1+beta_bins[bin2]*mu**2)*(mu**2*Beta_der_data[6][bin2])) )
 
-# Sigma8: (optimized!) (var=6)
+# Sigma8: (optimized!) (var=5)
 cdef double der_sigma8(int bin1, int bin2, double k, double mu):
     return 2*observed_spectrum(bin1, bin2, k, mu) /ref_values["sigma8"]
 
-# Bias: (9 derivatives) (bad optimized....) (var>=7)
+# Bias: (9 derivatives) (bad optimized....) (var>=6)
 cdef double der_bias(int bin1, int bin2, double k, double mu, int bin_bias) except -1:
-    bias_term = lambda bin: 1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_p=ref_values['w_p'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2)
+    bias_term = lambda bin: 1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2)
     if bin1==bin2 and bin1==bin_bias:
         return(observed_spectrum(bin1, bin2, k, mu) * 2*bias_term(bin_bias))
     elif bin1==bin_bias or bin2==bin_bias:
@@ -176,18 +175,18 @@ cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_
             for bin2 in range(bin1,N_bins):
                 P_der_matrix[bin1,bin2]=der_type_A(bin1,bin2,k,mu,var_num)
                 P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
-    elif var_num+1<=6: # Om_b, Om_c, w_p and w_1:
+    elif var_num+1<=5: # Om_b, Om_c, w_0 and w_1:
         for bin1 in range(N_bins):
             for bin2 in range(bin1,N_bins):
                 P_der_matrix[bin1,bin2]=der_type_B(bin1,bin2,k,mu,var_num)
                 P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
-    elif var_num+1==7: #sigma8
+    elif var_num+1==6: #sigma8
         for bin1 in range(N_bins):
             for bin2 in range(bin1,N_bins):
                 P_der_matrix[bin1,bin2]=der_sigma8(bin1,bin2,k,mu)
                 P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
     else: #bias
-        bin_bias = var_num-7
+        bin_bias = var_num-N_cosmo_vars
         for bin1 in range(N_bins):
             for bin2 in range(bin1,N_bins):
                 P_der_matrix[bin1,bin2]=der_bias(bin1,bin2,k,mu,bin_bias)
@@ -332,17 +331,6 @@ def FM(int check_AP=0, FMname="test", double fixed_kmax=0.2):
             np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins.csv" %(FMname,check_AP,N_bins), FM)
             print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
     return FM
-
-# def FM_var(int var1, int check_K=0.2):
-#     FM = np.zeros([N_tot_vars,N_tot_vars])
-#     for var2 in range(var1,N_tot_vars):
-#         start = time.clock()
-#         FM[var1,var2]=fisher_matrix_element(var1,var2,check_K)
-#         stop = time.clock()
-#         FM[var2,var1]=FM[var1,var2]
-#         np.savetxt("OUTPUT/FISHER_MATRIX_%d_K%d.csv" %(var1,CHECK_DER_K), FM)
-#         print "(%d, %d) --> %g (%g min.)" %(var1,var2,FM[var1,var2],(stop-start)/60.)
-#     return
 
 # include "libraries/plot_stuff.pxi"
 

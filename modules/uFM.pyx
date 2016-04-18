@@ -16,7 +16,6 @@ def init():
     compute_survey_DATA()
     store_int1()
 
-
 #---------------------------------------
 # CONVOLVED SPECTRA:
 #---------------------------------------
@@ -122,7 +121,7 @@ def test_growth(bin, k, mu):
 cdef double der_type_A(int bin,  int var_num, double k,double mu):
     return observed_terms(bin, k, mu) * numerical_paramDER(k,bin,var_num)
 
-# Om_b, Om_c, w_p and w_1: (optimized!) (var 2-5)
+# Om_b, Om_c, w_0: (optimized!) (var 2-4)
 cdef double der_type_B(int bin, int var_num, double k, double mu):
     cdef double CAMB_term
     if var_num<=3: #Om_b, Om_c
@@ -139,14 +138,14 @@ cdef double der_type_B(int bin, int var_num, double k, double mu):
 #     # Pay attention to lnH_der_data that are computed in z_avg....
 #     return(observed_spectrum(bin, k, mu) * (2*lnG_der_data[6][bin] + 2./(1+beta_bins[bin]*mu**2)*(mu**2*Beta_der_data[6][bin]) ) )
 
-# Sigma8: (optimized!) (var=6)
+# Sigma8: (optimized!) (var=5)
 cdef double der_sigma8(int bin, double k, double mu):
     return 2*observed_spectrum(bin, k, mu) /ref_values["sigma8"]
 
-# Bias: (9 derivatives) (bad optimized....) (var>=7)
+# Bias: (9 derivatives) (bad optimized....) (var>=6)
 cdef double der_bias(int bin, double k, double mu, int bin_bias) except -1:
     if bin==bin_bias:
-        result =observed_spectrum(bin, k, mu) * 2 * (1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_p=ref_values['w_p'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2) )
+        result =observed_spectrum(bin, k, mu) * 2 * (1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2) )
         return(result)
     else:
         return(0.)
@@ -156,9 +155,9 @@ cdef double der_bias(int bin, double k, double mu, int bin_bias) except -1:
 cdef double DER(double k, double mu, int var_num, int bin):
     if var_num+1<=2: #h and n_s
         return(der_type_A(bin,var_num,k,mu))
-    elif var_num+1<=6: # Om_b, Om_c, w_p and w_1:
+    elif var_num+1<=5: # Om_b, Om_c, w_0:
         return(der_type_B(bin,var_num,k,mu))
-    elif var_num+1==7: #sigma8
+    elif var_num+1==6: #sigma8
         return(der_sigma8(bin,k,mu))
     else: #bias
         bin_bias = var_num-N_cosm_vars
@@ -228,6 +227,7 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, top_hat=0, double 
     else:
         k_max_array = np.array([fixed_kmax]*N_bins)
 
+    # Check if some element of the matrix is zero anyway:
     if var1>N_cosm_vars:
         bin = var1-N_cosm_vars # bin_bias
         params[2]= bin
@@ -241,6 +241,7 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, top_hat=0, double 
             params[2]=bin
             FM += vol_shell(bin) /(8*np.pi**2) * eval_integration_GSL(k_min_hard, k_max_array[bin], abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC)
     return FM
+
 
 #------------------------
 # Computation of FM:
