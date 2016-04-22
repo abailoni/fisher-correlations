@@ -62,6 +62,6 @@ for i in range(N_k):
 
 
 # plot_fcts_PRO([santi_0[:,0], k_vect],[santi_0[:,1], spectrum], "difference_santi_0", ["Santi z=0", "Python wrapper"],'xy')
-plot_fcts(k_vect,[(santi-spectrum)], "difference_santi_0", ["Difference: Santi-python"],'x')
+plot_fcts(k_vect,[(santi-spectrum)/spectrum*100], "difference_santi_0_perc", ["Difference: Santi-python (percentage)"],'x')
 
 

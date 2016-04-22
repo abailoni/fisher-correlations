@@ -16,7 +16,6 @@ include "libraries/analytical_fcts.pxi"
 
 
 
-
 # It does all the first necessary things:
 def init():
     compute_CAMB_spectra()
@@ -100,6 +99,7 @@ cdef double windowed_DER(double k, int bin1, int bin2, int var): #var [0-3]
 #     W2_derW1 = eval_interp_GSL(k, &integral_DER[bin1][bin2])
 #     W1_derW2 = eval_interp_GSL(k, &integral_DER[bin2][bin1])
 #     return sqrt(vol_shell_original(bin1)*vol_shell_original(bin2)) / (4*PI**2) * ( k*mu*mu*(W2_derW1*(lnH_der_data[var][bin1]+lnD_der_data[var][bin1]) +W1_derW2*(lnH_der_data[var][bin2]+lnD_der_data[var][bin2])) -k*(W2_derW1*lnD_der_data[var][bin1] +W1_derW2*lnD_der_data[var][bin2] ) )
+
 
 
 #--------------------------------------------------------------
@@ -210,6 +210,9 @@ cdef double trace(double k, double mu, int var1, int var2):
                     trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell(a)*vol_shell(b)*vol_shell(c)*vol_shell(d)) )
     return trace
 
+def trace_py(k,mu,var1,var2):
+    return trace(k,mu,var1,var2)
+
 # cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
 #     inverse_C_v = inverse_matrix_C(k, mu)
 #     derivative_matrices(k, mu, var1, P_der_1_v)
@@ -241,6 +244,48 @@ cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
                     if ( a==bin_kmax or b==bin_kmax or c==bin_kmax or d==bin_kmax ):
                         trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell(a)*vol_shell(b)*vol_shell(c)*vol_shell(d)) )
     return(trace)
+
+
+#--------------------------------------------------------------
+#--------------------------------------------------------------
+# Interpolation Trace:
+#--------------------------------------------------------------
+#--------------------------------------------------------------
+cdef enum:
+    max_N_vars = 50
+cdef:
+    interpolation_tools_2D trace_tools[max_N_vars][max_N_vars]
+
+
+def trace_array(vect_k, vect_mu, var1, var2):
+    cdef:
+         int Nk = vect_k.shape[0], Nmu = vect_mu.shape[0]
+    results = np.empty((Nk,Nmu))
+    cdef:
+        double[::1] vect_k_c = vect_k
+        double[::1] vect_mu_c = vect_mu
+        double[:,::1] results_c = results
+    for ik in range(Nk):
+        for imu in range(Nmu):
+            results_c[ik,imu] = trace(vect_k_c[ik],vect_mu_c[imu],var1,var2)
+    return results
+
+
+def init_Trace(Nk=50,Nmu=3):
+    print "Computing, storing and interpolating Trace..."
+    vect_k = np.linspace(1e-3,0.2,Nk)
+    vect_mu = np.linspace(-1.,1.,Nmu)
+    for var1 in range(N_tot_vars):
+        for var2 in range(var1,N_tot_vars):
+            start = time.time()
+            flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flat
+            alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
+            print "- vars %d and %d: %g sec." %(var1,var2,time.time()-start)
+    print "Done!"
+
+
+cdef double interp_trace(double k, double mu, int var1, int var2):
+    return eval_interp_GSL_2D(k, mu, &trace_tools[var1][var2])
 
 
 #--------------------------------------------------------------
@@ -332,6 +377,66 @@ def FM(int check_AP=0, FMname="test", double fixed_kmax=0.2):
             np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins.csv" %(FMname,check_AP,N_bins), FM)
             print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
     return FM
+
+
+# #################
+# PLOTTING TRACE:
+# #################
+
+def plot_trace(int var1, int var2, N_k=100,N_mu=10,k_min=1e-3,k_max=0.5):
+    k_vect = np.linspace(k_min,k_max,N_k)
+    # k_vect = np.logspace(np.log10(k_min),np.log10(k_max),N_k)
+    mu_vect = np.linspace(-1.,1.,N_mu)
+    samples = np.zeros([N_k,N_mu])
+    cdef:
+        double[:,::1] samples_c = samples
+        double[::1] k_vect_c = k_vect
+        double[::1] mu_vect_c = mu_vect
+    time_count = 0
+    total_start = time.time()
+    for i_k in range(N_k):
+        for i_mu in range(N_mu):
+            samples_c[i_k,i_mu] = trace(k_vect_c[i_k],mu_vect_c[i_mu],var1,var2)
+    total_stop = time.time()
+    print "Trace computation: %g seconds" %(total_stop-total_start)
+    np.savetxt("OUTPUT/trace/trace_3D_vars_%d%d.csv" %(var1,var2),samples)
+
+    ######################
+    # Plot this thing...
+    # Result ---> it's a mess ;D
+    ######################
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib import cm
+    from matplotlib.ticker import LinearLocator, FormatStrFormatter
+    fig = pl.figure()
+    ax = fig.gca(projection='3d')
+    # X = np.arange(-5, 5, 0.25)
+    # Y = np.arange(-5, 5, 0.25)
+    # R = np.sqrt(X**2 + Y**2)
+    # Z = np.sin(R)
+    mu_vect_m, k_vect_m  = np.meshgrid(mu_vect, k_vect)
+    surf = ax.plot_surface(k_vect_m, mu_vect_m, np.log10(samples), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
+    # # ax.set_zlim(-1.01, 1.01)
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+    # ax.zaxis.set_scale('log')
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+    fig.savefig('plots/trace/trace_3D_vars_%d%d.pdf'%(var1,var2))
+
+    # fig2=pl.figure()
+    # ax1=fig2.add_subplot(111)
+    # ax1.plot(k_vect,samples[:,0],'r-',label="Trace along $\\mu=-1$")
+    # # ax1.plot(vect_k,class_fct['P_0'](vect_k),'b-',label="Class Spectrum")
+    # ax1.grid(True)
+    # ax1.legend(loc='best')
+    # ax1.set_yscale('log')
+    # # ax1.set_xlabel("$k$ [$h$/Mpc]")
+    # # ax1.set_ylabel("$P(x)$ [(Mpc/$h$)$^3$]")
+    # fig2.savefig('plots/trace/trace_along_mu_vars%d%d.pdf'%(var1,var2))
+    # np.savetxt("OUTPUT/trace/trace_along_mu_vars%d%d.csv"%(var1,var2),np.column_stack((k_vect,samples[:,0])))
+    return k_vect, samples[:,0]
+
+
 
 # include "libraries/plot_stuff.pxi"
 
