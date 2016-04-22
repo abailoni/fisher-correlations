@@ -14,6 +14,7 @@ def plot_fcts(x, ys, pdf_name, labels, log="xy", legend="best",xyLabels=['$k$ [$
         ax.set_yscale('log')
     ax.set_xlabel(xyLabels[0])
     ax.set_ylabel(xyLabels[1])
+    fig.set_tight_layout(True)
     fig.savefig(OUTPUT_DIR+pdf_name+".pdf")
 
 OUTPUT_DIR = "plots/convolved_spectra/"

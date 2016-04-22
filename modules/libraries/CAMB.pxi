@@ -15,9 +15,11 @@ cdef:
     interpolation_tools *tools_anorm
     double k_min, k_max
 
+
 try:
     import camb
     from camb import model
+    check_CAMB = True
 except ImportError:
     print "ATTENTION: camb module not found! Spectra can only be imported from file"
     check_CAMB = False

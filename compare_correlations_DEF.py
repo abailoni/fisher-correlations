@@ -225,6 +225,7 @@ def print_ellipses_allVars(all_ellipses, maxRanges, pdf_name, labels, legend="be
     fig.savefig(OUTPUT_FOLDER+pdf_name+'.pdf')
 
 
+
 var1, var2 = "h", "\\Omega_b"
 # var1, var2 = "\\Omega_b", "\\Omega_c"
 # var1, var2 = "h", "n_s"
