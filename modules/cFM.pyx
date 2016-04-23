@@ -128,17 +128,23 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 
     cdef double beta_term = 1./(1+beta_bins[bin1]*mu**2)*( 2*beta_bins[bin1]*mu*mu_der(mu,bin1,var_num) + mu**2*Beta_der_data[var_num][bin1] ) +  1./(1+beta_bins[bin2]*mu**2)*( 2*beta_bins[bin2]*mu*mu_der(mu,bin2,var_num)+ mu**2*Beta_der_data[var_num][bin2] )
 
-    # cdef double derivative_k = windowed_DER_k(k,mu,bin1,bin2,var_num)
-    cdef double derivative_k = conv_spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num) * k_der(mu,k,bin2,var_num))
+    # AP TERM:
+    cdef double AP_term = 0.
+    if AP_flag:
+        AP_term = conv_spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num) * k_der(mu,k,bin2,var_num))
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
     cdef np.intp_t avg_bin = (bin1+bin2)/2
-    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term + derivative_k*CHECK_DER_K) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + lnH_der_data[var_num][avg_bin] - 2*lnD_der_data[var_num][avg_bin] + beta_term  )
+    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term + AP_term) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + lnH_der_data[var_num][avg_bin] - 2*lnD_der_data[var_num][avg_bin] + beta_term  )
+
+
 
 # # Gamma: (optimized!) (var=6)
 # cdef double der_gamma(int bin1, int bin2, double k, double mu):
 #     # Pay attention to lnH_der_data that are computed in z_avg....
 #     return(observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[6][bin1]+lnG_der_data[6][bin2] + 1./(1+beta_bins[bin1]*mu**2)*(mu**2*Beta_der_data[6][bin1]) + 1./(1+beta_bins[bin2]*mu**2)*(mu**2*Beta_der_data[6][bin2])) )
+
+
 
 # Sigma8: (optimized!) (var=5)
 cdef double der_sigma8(int bin1, int bin2, double k, double mu):
@@ -187,7 +193,7 @@ cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_
                 P_der_matrix[bin1,bin2]=der_sigma8(bin1,bin2,k,mu)
                 P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
     else: #bias
-        bin_bias = var_num-N_cosmo_vars
+        bin_bias = var_num-N_cosm_vars
         for bin1 in range(N_bins):
             for bin2 in range(bin1,N_bins):
                 P_der_matrix[bin1,bin2]=der_bias(bin1,bin2,k,mu,bin_bias)
@@ -271,22 +277,42 @@ def trace_array(vect_k, vect_mu, var1, var2):
     return results
 
 
-def init_Trace(Nk=50,Nmu=3):
-    print "Computing, storing and interpolating Trace..."
+def init_Trace(Nk=50,Nmu=4):
+    print "Computing, storing and interpolating traces..."
+
+    # Read content traces folder:
+    OUTPUT_PATH_TRACE = "INPUT/traces/"
+    for (dirpath, dirnames, filenames) in walk(OUTPUT_PATH_TRACE):
+        names = [ fi for fi in filenames if fi.endswith(".csv") ]
+        break
+
     vect_k = np.linspace(1e-3,0.2,Nk)
     vect_mu = np.linspace(-1.,1.,Nmu)
+    index = 0
     for var1 in range(N_tot_vars):
         for var2 in range(var1,N_tot_vars):
-            start = time.time()
-            flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flat
+            file_name = "Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2)
+            if file_name in names:
+                if index==0:
+                    print "Traces computed previously. Importing from file..."
+                flat_arr = np.loadtxt(open(OUTPUT_PATH_TRACE+file_name,"rb")).flatten()
+            else:
+                start = time.time()
+                flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flatten()
+                np.savetxt(OUTPUT_PATH_TRACE+"Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2), flat_arr)
+                run_time = time.time()-start
+                remaining = run_time* (N_tot_vars*(N_tot_vars+1)/2 - index - 1) /60.
+                print "- vars %d and %d: %g sec. \t --> ~%.0f min %d sec to go" %(var1,var2,run_time,remaining,int((remaining -int(remaining)) *60) )
             alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
-            print "- vars %d and %d: %g sec." %(var1,var2,time.time()-start)
+            index+=1
     print "Done!"
 
 
 cdef double interp_trace(double k, double mu, int var1, int var2):
     return eval_interp_GSL_2D(k, mu, &trace_tools[var1][var2])
 
+def interp_trace_py(k,mu,var1,var2):
+    return interp_trace(k,mu,var1,var2)
 
 #--------------------------------------------------------------
 #--------------------------------------------------------------
@@ -314,10 +340,14 @@ cdef double argument_mu(double mu, void *input): #k, var1, var2, #bin_kmax
     cdef:
         double *params = <double*> input
         double k = params[0]
+    # OBSOLETE:
     if abs(mode_kmax)<1e-10: # is zero
         return( k*k * trace_part(k,mu,<int>params[1],<int>params[2],<int>params[3]) )
     else:
-        return( k*k * trace(k,mu,<int>params[1],<int>params[2]) )
+        if interpolate_Trace:
+            return k*k * interp_trace(k,mu,<int>params[1],<int>params[2])
+        else:
+            return k*k * trace(k,mu,<int>params[1],<int>params[2])
 
 cdef double argument_k(double k, void *input): #var1, var2, bin_kmax
     cdef double params[4]
@@ -333,14 +363,23 @@ cdef double argument_k(double k, void *input): #var1, var2, bin_kmax
 # FISHER MATRIX element:
 #------------------------
 cdef:
-    double CHECK_DER_K = 0
     double mode_kmax # 0 for k_max(z), number for fixed k_max
+
+AP_flag = False
+interpolate_Trace = True
+
 k_min_hard = 0.001
 k_max_hard = 0.5
-def fisher_matrix_element(int var1, int var2, int check_K=0, double fixed_kmax=0.2):
-    global CHECK_DER_K, mode_kmax
-    CHECK_DER_K=check_K
+def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=True, double fixed_kmax=0.2):
+    global AP_flag, mode_kmax
+    AP_flag=check_AP
     mode_kmax = fixed_kmax
+
+    global interpolate_Trace
+    interpolate_Trace = interp_Tr
+    if interpolate_Trace:
+        init_Trace() # Compute or import interpolation
+
     cdef gsl_function F_k
     F_k.function = &argument_k
     # Let's laugh... :/ --> IT WORKS!! :D (Apparently)
@@ -366,12 +405,12 @@ def fisher_matrix_element(int var1, int var2, int check_K=0, double fixed_kmax=0
 #------------------------
 # Computation of FM:
 #------------------------
-def FM(int check_AP=0, FMname="test", double fixed_kmax=0.2):
+def FM(int check_AP=0, FMname="test", interp_Tr=True, fixed_kmax=0.2):
     FM = np.zeros([N_tot_vars,N_tot_vars])
     for var1 in range(N_tot_vars):
         for var2 in range(var1,N_tot_vars):
             start = time.clock()
-            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,fixed_kmax)
+            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,interp_Tr,fixed_kmax)
             stop = time.clock()
             FM[var2,var1]=FM[var1,var2]
             np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins.csv" %(FMname,check_AP,N_bins), FM)
@@ -401,27 +440,27 @@ def plot_trace(int var1, int var2, N_k=100,N_mu=10,k_min=1e-3,k_max=0.5):
     print "Trace computation: %g seconds" %(total_stop-total_start)
     np.savetxt("OUTPUT/trace/trace_3D_vars_%d%d.csv" %(var1,var2),samples)
 
-    ######################
-    # Plot this thing...
-    # Result ---> it's a mess ;D
-    ######################
-    from mpl_toolkits.mplot3d import Axes3D
-    from matplotlib import cm
-    from matplotlib.ticker import LinearLocator, FormatStrFormatter
-    fig = pl.figure()
-    ax = fig.gca(projection='3d')
-    # X = np.arange(-5, 5, 0.25)
-    # Y = np.arange(-5, 5, 0.25)
-    # R = np.sqrt(X**2 + Y**2)
-    # Z = np.sin(R)
-    mu_vect_m, k_vect_m  = np.meshgrid(mu_vect, k_vect)
-    surf = ax.plot_surface(k_vect_m, mu_vect_m, np.log10(samples), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
-    # # ax.set_zlim(-1.01, 1.01)
-    ax.zaxis.set_major_locator(LinearLocator(10))
-    ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
-    # ax.zaxis.set_scale('log')
-    fig.colorbar(surf, shrink=0.5, aspect=5)
-    fig.savefig('plots/trace/trace_3D_vars_%d%d.pdf'%(var1,var2))
+    # ######################
+    # # Plot this thing...
+    # # Result ---> it's a mess ;D
+    # ######################
+    # from mpl_toolkits.mplot3d import Axes3D
+    # from matplotlib import cm
+    # from matplotlib.ticker import LinearLocator, FormatStrFormatter
+    # fig = pl.figure()
+    # ax = fig.gca(projection='3d')
+    # # X = np.arange(-5, 5, 0.25)
+    # # Y = np.arange(-5, 5, 0.25)
+    # # R = np.sqrt(X**2 + Y**2)
+    # # Z = np.sin(R)
+    # mu_vect_m, k_vect_m  = np.meshgrid(mu_vect, k_vect)
+    # surf = ax.plot_surface(k_vect_m, mu_vect_m, np.log10(samples), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
+    # # # ax.set_zlim(-1.01, 1.01)
+    # ax.zaxis.set_major_locator(LinearLocator(10))
+    # ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+    # # ax.zaxis.set_scale('log')
+    # fig.colorbar(surf, shrink=0.5, aspect=5)
+    # fig.savefig('plots/trace/trace_3D_vars_%d%d.pdf'%(var1,var2))
 
     # fig2=pl.figure()
     # ax1=fig2.add_subplot(111)

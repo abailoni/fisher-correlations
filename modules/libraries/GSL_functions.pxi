@@ -64,7 +64,7 @@ cdef void alloc_interp_GSL_2D(double[::1] data_x, double[::1] data_y, double[::1
         int Ny = data_y.shape[0]
 
     interp_data.acc_x, interp_data.acc_y = gsl_interp_accel_alloc(), gsl_interp_accel_alloc()
-    interp_data.spline = gsl_spline2d_alloc(gsl_interp2d_bilinear, Nx, Ny)
+    interp_data.spline = gsl_spline2d_alloc(gsl_interp2d_bicubic, Nx, Ny)
     # Computation spline coeff.:
     gsl_spline2d_init(interp_data.spline, &data_x[0], &data_y[0], &data_z[0], Nx, Ny)
     return
@@ -138,60 +138,60 @@ cdef double eval_integ_GSL_cquad(double a, double b, double abs_prec, double rel
     return(C_results[0])
 
 
-############################################
-# Manual integration (trapezi algorithm)
-############################################
+#############################################
+## Manual integration (trapezi algorithm)
+#############################################
 
-'''
-This variant starts already with a minimum dx
-INPUT int_trapezi():
- - array con estremi
- - precisione relativa per modalità 1 // passo dx per modalità 2
- - eventuali parametri funzione [puntatore void]
- - funzione
- - number of starting intervals
- - modalità: 1 o 2 [int] --> no longer implemented
-'''
+#'''
+#This variant starts already with a minimum dx
+#INPUT int_trapezi():
+# - array con estremi
+# - precisione relativa per modalità 1 // passo dx per modalità 2
+# - eventuali parametri funzione [puntatore void]
+# - funzione
+# - number of starting intervals
+# - modalità: 1 o 2 [int] --> no longer implemented
+#'''
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef double int_trapezi(double x_min, double x_max, double precisione, void *params, double (*fun) (double,void*), int starting_intervals):
-    # CASO IN CUI SI VUOLE UNA CERTA PRECISIONE:
-    # Calcolo f(x_max) e f(x_min) in modo da dare la prima stima dell'integrale semplicemente come area di un trapezio di altezza x_max-x_min:
-    cdef double sum = (fun(x_max,params)+fun(x_min,params))/2.
-    cdef double new_sum, total_sum, h=(x_max-x_min)/starting_intervals
-    # Compute the first sum:
-    for i in range(starting_intervals+1):
-        sum=sum+fun(x_min+i*h,params)
-    sum=sum*h
-    h=h/2
-    # Continuo finché non raggiungo la precisione:
-    cdef:
-        double old_sum=sum
-        int intervals=starting_intervals
-    for contatore in range(1000):
-        # Calcolo i nuovi termini della sommatoria:
-        new_sum = 0
-        if contatore>5:
-            print total_sum
-        for i in range(intervals):
-            new_sum = new_sum + fun(x_min+h+2*h*i,params)
-        new_sum = new_sum*h
-        # Sommo i nuovi contributi a quelli vecchi (dato che h è dimezzato quelli vecchi dovranno essere divisi per 2):
-        total_sum = new_sum+old_sum/2
-        h = h/2
-        intervals = intervals*2
-        if ((abs(total_sum-old_sum)/total_sum)<=precisione):
-            return(total_sum)
-        old_sum=total_sum
-    print "ERROR trapezi!"
-    return(-999999)
-    #//CASO IN CUI h E' BEN DEFINITO:
-    #} else {
-    #    double sum=(fun(x_max,params)+fun(x_min,params))/2;
-    #    double h=precisione;
-    #    for(double x=estremi[0]+h;x<estremi[1];x+=(h)) {
-    #        sum+=fun(x,params);
-    #    }
-    #    return(sum*=h);
-    #}
+#@cython.boundscheck(False)
+#@cython.wraparound(False)
+#cdef double int_trapezi(double x_min, double x_max, double precisione, void *params, double (*fun) (double,void*), int starting_intervals):
+#    # CASO IN CUI SI VUOLE UNA CERTA PRECISIONE:
+#    # Calcolo f(x_max) e f(x_min) in modo da dare la prima stima dell'integrale semplicemente come area di un trapezio di altezza x_max-x_min:
+#    cdef double sum = (fun(x_max,params)+fun(x_min,params))/2.
+#    cdef double new_sum, total_sum, h=(x_max-x_min)/starting_intervals
+#    # Compute the first sum:
+#    for i in range(starting_intervals+1):
+#        sum=sum+fun(x_min+i*h,params)
+#    sum=sum*h
+#    h=h/2
+#    # Continuo finché non raggiungo la precisione:
+#    cdef:
+#        double old_sum=sum
+#        int intervals=starting_intervals
+#    for contatore in range(1000):
+#        # Calcolo i nuovi termini della sommatoria:
+#        new_sum = 0
+#        if contatore>5:
+#            print total_sum
+#        for i in range(intervals):
+#            new_sum = new_sum + fun(x_min+h+2*h*i,params)
+#        new_sum = new_sum*h
+#        # Sommo i nuovi contributi a quelli vecchi (dato che h è dimezzato quelli vecchi dovranno essere divisi per 2):
+#        total_sum = new_sum+old_sum/2
+#        h = h/2
+#        intervals = intervals*2
+#        if ((abs(total_sum-old_sum)/total_sum)<=precisione):
+#            return(total_sum)
+#        old_sum=total_sum
+#    print "ERROR trapezi!"
+#    return(-999999)
+#    #//CASO IN CUI h E' BEN DEFINITO:
+#    #} else {
+#    #    double sum=(fun(x_max,params)+fun(x_min,params))/2;
+#    #    double h=precisione;
+#    #    for(double x=estremi[0]+h;x<estremi[1];x+=(h)) {
+#    #        sum+=fun(x,params);
+#    #    }
+#    #    return(sum*=h);
+#    #}
