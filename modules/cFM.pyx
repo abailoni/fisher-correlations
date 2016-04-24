@@ -2,7 +2,7 @@
 # Branch:
 ###########
 # - modified Trace that set k_max for the lower index (commented there is also the higher case)
-# - int1 with FFT (no AP term for the moment)
+# - FFT used
 
 # Importing modules and defining default data:
 
@@ -219,6 +219,27 @@ cdef double trace(double k, double mu, int var1, int var2):
 def trace_py(k,mu,var1,var2):
     return trace(k,mu,var1,var2)
 
+# Just for the adaptive sampling and interpolation: (ks is a vector!)
+# It computes the log for a better sampling
+def trace_log_args(ks,**args):
+    Nk = ks.shape[0]
+    args_names = ['mu', 'var1', 'var2']
+    args_values = [0.]*3
+    for i, arg_name in enumerate(args_names):
+        if arg_name in args:
+            args_values[i] = args[arg_name]
+        else:
+            print "Error trace: not all the args received!"
+    results = np.empty(Nk)
+    for i, k in enumerate(ks):
+        result = trace(k,args_values[0],args_values[1],args_values[2])
+        results[i] = result
+        # if result>0:
+        #     results[i] = np.log10(result)
+        # else:
+        #     results[i] = -np.log10(-result)
+    return results
+
 # cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
 #     inverse_C_v = inverse_matrix_C(k, mu)
 #     derivative_matrices(k, mu, var1, P_der_1_v)
@@ -278,7 +299,7 @@ def trace_array(vect_k, vect_mu, var1, var2):
 
 
 def init_Trace(Nk=50,Nmu=4):
-    print "Computing, storing and interpolating traces..."
+    print "\nComputing, storing and interpolating traces:"
 
     # Read content traces folder:
     OUTPUT_PATH_TRACE = "INPUT/traces/"
@@ -306,6 +327,73 @@ def init_Trace(Nk=50,Nmu=4):
             alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
             index+=1
     print "Done!"
+
+def prova(x,y):
+    x_max, y_max = x[-1], y[0]
+    y = y/y_max * x_max
+    return y*y*y*y
+
+def adapt_trace_term(var1, var2, Nk_start=50, mu=-1., tol=0.05, min_points=10, max_level=20):
+    args = {'mu':mu, 'var1':var1, 'var2':var2}
+    vect_k = np.linspace(1e-3,0.2,Nk_start)
+    return adapt_sampl.sample_function(trace_log_args, vect_k, tol, min_points, max_level, prova, **args)
+
+def adapt_trace_tot(var1, var2, Nk_start=15, Nmu=10, tol=0.05, min_points=10, max_level=20):
+    # Compute optimised k for mu = -1.0:
+    samples_k, logTr_mu1 = adapt_trace_term(var1, var2, Nk_start, -1., tol, min_points, max_level)
+    print "Numer samples: %d" %(samples_k.shape[0])
+
+    # Compute trace samples for other values of mu:
+    Nk_sample = samples_k.shape[0]
+    logTr = np.empty((Nk_sample,Nmu))
+    logTr[:,0] = logTr_mu1.T
+    vect_mu = np.linspace(-1.,1.,Nmu)
+    for i, mu in enumerate(vect_mu[1:]):
+        args = {'mu':mu, 'var1':var1, 'var2':var2}
+        logTr[:,i+1] = trace_log_args(samples_k,**args).T
+        print ".",
+
+    # Interpolate k-direction with Akima1DInterpolator: (avoid spline mess)
+    print "\nAkima... ",
+    np.savetxt("temp.csv",logTr)
+    Nk = 3000
+    vect_k = np.linspace(1e-3,0.2,Nk)
+    final_trSamples = np.empty((Nk,Nmu))
+    for i, mu in enumerate(vect_mu):
+        final_trSamples[:,i] = Akima1DInterpolator(samples_k, logTr[:,i].T)(vect_k)
+    # Revert log:
+    # idxs1, idxs2 = (final_trSamples >= 0.).nonzero(), (final_trSamples < 0.).nonzero()
+    # final_trSamples[idxs1] = np.power(10,final_trSamples[idxs1])
+    # final_trSamples[idxs2] = - np.power(10,-final_trSamples[idxs2])
+
+    # Finally interpolate everything with GSL 2D: (spline cubic)
+    print "GSL..."
+    alloc_interp_GSL_2D(vect_k, vect_mu, final_trSamples.T.flatten(), &trace_tools[var1][var2])
+
+
+
+
+def init_Trace_term(var1, var2, Nk=50, Nmu=4):
+    # Read content traces folder:
+    OUTPUT_PATH_TRACE = "INPUT/traces/"
+    for (dirpath, dirnames, filenames) in walk(OUTPUT_PATH_TRACE):
+        names = [ fi for fi in filenames if fi.endswith(".csv") ]
+        break
+
+    vect_k = np.linspace(1e-3,0.2,Nk)
+    vect_mu = np.linspace(-1.,1.,Nmu)
+
+    file_name = "Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2)
+    if file_name in names:
+        print "Trace interpolated previously. Importing from file..."
+        flat_arr = np.loadtxt(open(OUTPUT_PATH_TRACE+file_name,"rb")).flatten()
+    else:
+        start = time.time()
+        flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flatten()
+        np.savetxt(OUTPUT_PATH_TRACE+"Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2), flat_arr)
+        run_time = time.time()-start
+        print "Computing trace: %g sec." %(run_time)
+    alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
 
 
 cdef double interp_trace(double k, double mu, int var1, int var2):
@@ -377,8 +465,12 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=True, do
 
     global interpolate_Trace
     interpolate_Trace = interp_Tr
-    if interpolate_Trace:
-        init_Trace() # Compute or import interpolation
+    # BEST SOLUTION: interpolate Trace before and only check if it's there!
+    # if interpolate_Trace:
+    #     init_Trace() # Compute or import interpolation
+    # TEMP: (!!)
+    # if interpolate_Trace:
+    #     init_Trace_term(var1,var2)
 
     cdef gsl_function F_k
     F_k.function = &argument_k
@@ -399,7 +491,7 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=True, do
             FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, k_max_int, abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC_K)
     else:
         FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, fixed_kmax, abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC_K)
-    return(FM_elem)
+    return FM_elem
 
 
 #------------------------
