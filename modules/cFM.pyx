@@ -67,6 +67,11 @@ def store_int1():
 cdef double conv_spectrum_der_k(double k, int bin1, int bin2):
     return gsl_spline_eval_deriv(integral_1_tools[bin1][bin2][0].spline, k, integral_1_tools[bin1][bin2][0].acc)
 
+cdef double spectrum_der_k(double k, int bin1, int bin2):
+    if "windowFun" in typeFM:
+        return conv_spectrum_der_k(k,bin1,bin2)
+    else:
+        return zero_spectrum_der_k(k)
 
 #**************************************************************
 #**************************************************************
@@ -79,35 +84,37 @@ cdef double conv_spectrum_der_k(double k, int bin1, int bin2):
 #----------------------------------------------
 # Reconstruct spectrum and integrals A and B:
 #----------------------------------------------
-cdef double windowed_Spectrum(double k, int bin1, int bin2):
-    if bin1<=bin2:
+cdef double windowed_zeroSpectrum(double k, int bin1, int bin2):
+    if bin1<=bin2: #should not be necessary, but...
         return eval_interp_GSL(k, &integral_1_tools[bin1][bin2][0])
     else:
         return eval_interp_GSL(k, &integral_1_tools[bin2][bin1][0])
 
-def windowed_Spectrum_py(k,bin1,bin2):
-    return windowed_Spectrum(k,bin1,bin2)
-
-
-cdef double windowed_DER(double k, int bin1, int bin2, int var): #var [0-3]
+cdef double windowed_numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
     if bin1<=bin2:
         return eval_interp_GSL(k, &integral_1_tools[bin1][bin2][var+1])
     else:
         return eval_interp_GSL(k, &integral_1_tools[bin2][bin1][var+1])
 
-# cdef double windowed_DER_k(double k, double mu, int bin1, int bin2, int var): #var [3-5]
-#     W2_derW1 = eval_interp_GSL(k, &integral_DER[bin1][bin2])
-#     W1_derW2 = eval_interp_GSL(k, &integral_DER[bin2][bin1])
-#     return sqrt(vol_shell_original(bin1)*vol_shell_original(bin2)) / (4*PI**2) * ( k*mu*mu*(W2_derW1*(lnH_der_data[var][bin1]+lnD_der_data[var][bin1]) +W1_derW2*(lnH_der_data[var][bin2]+lnD_der_data[var][bin2])) -k*(W2_derW1*lnD_der_data[var][bin1] +W1_derW2*lnD_der_data[var][bin2] ) )
 
+cdef double spectrum(double k, int bin1, int bin2):
+    if "windowFun" in typeFM:
+        return windowed_zeroSpectrum(k,bin1,bin2)
+    else:
+        return zero_spectrum(k)
 
+cdef double numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
+    if "windowFun" in typeFM:
+        return windowed_numerical_paramDER(k,bin1,bin2,var)
+    else:
+        return CAMB_numerical_paramDER(k,var+1)
 
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
 #--------------------------------------------------------------
 # Observed spectrum: (optimized!)
 cdef double observed_spectrum(int bin1, int bin2, double k, double mu):
-    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * windowed_Spectrum(k,bin1,bin2)
+    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum(k,bin1,bin2)
 
 # Observed terms: (optimized!)
 # to avoid division by zero given by windowed_Spectrum with i!=j
@@ -115,14 +122,14 @@ cdef double observed_terms(int bin1, int bin2, double k, double mu):
     return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2)
 
 # h and n_s: (optimized!) (var 0-1)
-cdef double der_type_A(int bin1, int bin2, double k,double mu, int var_num):
-    return  observed_terms(bin1, bin2, k, mu)*windowed_DER(k, bin1, bin2, var_num)
+cdef double der_type_A(int bin1, int bin2, double k, double mu, int var_num):
+    return  observed_terms(bin1, bin2, k, mu)*numerical_paramDER(k, bin1, bin2, var_num)
 
 # Om_b, Om_c, w_0: (optimized!) (var 2-4)
 cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     cdef double CLASS_term
     if var_num<=3: #Om_b, Om_c
-        CLASS_term = windowed_DER(k, bin1, bin2, var_num)
+        CLASS_term = numerical_paramDER(k, bin1, bin2, var_num)
     else:
         CLASS_term = 0
 
@@ -131,19 +138,17 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     # AP TERM:
     cdef double AP_term = 0.
     if AP_flag:
-        AP_term = conv_spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num) * k_der(mu,k,bin2,var_num))
+        AP_term = spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num) * k_der(mu,k,bin2,var_num))
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
     cdef np.intp_t avg_bin = (bin1+bin2)/2
     return observed_terms(bin1, bin2, k, mu) * ( CLASS_term + AP_term) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + lnH_der_data[var_num][avg_bin] - 2*lnD_der_data[var_num][avg_bin] + beta_term  )
 
 
-
 # # Gamma: (optimized!) (var=6)
 # cdef double der_gamma(int bin1, int bin2, double k, double mu):
 #     # Pay attention to lnH_der_data that are computed in z_avg....
 #     return(observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[6][bin1]+lnG_der_data[6][bin2] + 1./(1+beta_bins[bin1]*mu**2)*(mu**2*Beta_der_data[6][bin1]) + 1./(1+beta_bins[bin2]*mu**2)*(mu**2*Beta_der_data[6][bin2])) )
-
 
 
 # Sigma8: (optimized!) (var=5)
@@ -154,11 +159,11 @@ cdef double der_sigma8(int bin1, int bin2, double k, double mu):
 cdef double der_bias(int bin1, int bin2, double k, double mu, int bin_bias) except -1:
     bias_term = lambda bin: 1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2)
     if bin1==bin2 and bin1==bin_bias:
-        return(observed_spectrum(bin1, bin2, k, mu) * 2*bias_term(bin_bias))
+        return observed_spectrum(bin1, bin2, k, mu) * 2*bias_term(bin_bias)
     elif bin1==bin_bias or bin2==bin_bias:
-        return(observed_spectrum(bin1, bin2, k, mu) * bias_term(bin_bias))
+        return observed_spectrum(bin1, bin2, k, mu) * bias_term(bin_bias)
     else:
-        return(0.)
+        return 0.
 
 #--------------------------------------------------------------
 # Constructing matrices and find the final Trace: (numpy+cython)
@@ -174,47 +179,64 @@ cdef double[:,::1] inverse_matrix_C(double k, double mu):
             C_v[bin2,bin1]=C_v[bin1,bin2]
     return(np.linalg.inv(C))
 
-# Compute matrices of derivatives: (var_num from 0 to 7+N_bins-1)
-cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_der_matrix):
-    cdef np.intp_t bin1, bin2
+# Main routine for derivatives:
+cdef double DER(double k, double mu, int var_num, int bin1, int bin2):
     if var_num+1<=2: #h and n_s
-        for bin1 in range(N_bins):
-            for bin2 in range(bin1,N_bins):
-                P_der_matrix[bin1,bin2]=der_type_A(bin1,bin2,k,mu,var_num)
-                P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
-    elif var_num+1<=5: # Om_b, Om_c, w_0 and w_1:
-        for bin1 in range(N_bins):
-            for bin2 in range(bin1,N_bins):
-                P_der_matrix[bin1,bin2]=der_type_B(bin1,bin2,k,mu,var_num)
-                P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
+        return der_type_A(bin1,bin2,k,mu,var_num)
+    elif var_num+1<=5: # Om_b, Om_c, w_0:
+        return der_type_B(bin1,bin2,k,mu,var_num)
     elif var_num+1==6: #sigma8
-        for bin1 in range(N_bins):
-            for bin2 in range(bin1,N_bins):
-                P_der_matrix[bin1,bin2]=der_sigma8(bin1,bin2,k,mu)
-                P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
+        return der_sigma8(bin1,bin2,k,mu)
     else: #bias
         bin_bias = var_num-N_cosm_vars
-        for bin1 in range(N_bins):
+        return der_bias(bin1,bin2,k,mu,bin_bias)
+
+# Compute matrix of derivatives: (var_num from 0 to 7+N_bins-1)
+cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_der_matrix):
+    cdef np.intp_t bin1, bin2
+    for bin1 in range(N_bins):
             for bin2 in range(bin1,N_bins):
-                P_der_matrix[bin1,bin2]=der_bias(bin1,bin2,k,mu,bin_bias)
+                P_der_matrix[bin1,bin2]=DER(k,mu,var_num,bin1,bin2)
                 P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
-    return
 
 # Compute Trace:
 cdef double trace(double k, double mu, int var1, int var2):
-    inverse_C_v = inverse_matrix_C(k, mu)
-    derivative_matrices(k, mu, var1, P_der_1_v)
-    derivative_matrices(k, mu, var2, P_der_2_v)
-
-    # Optimized Cython trace:
     cdef double trace = 0
     cdef np.intp_t a, b, c, d
-    for a in range(N_bins):
-        for b in range(N_bins):
-            for c in range(N_bins):
-                for d in range(N_bins):
-                    trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell(a)*vol_shell(b)*vol_shell(c)*vol_shell(d)) )
-    return trace
+    if "correlations" in typeFM:
+        inverse_C_v = inverse_matrix_C(k, mu)
+        derivative_matrices(k, mu, var1, P_der_1_v)
+        derivative_matrices(k, mu, var2, P_der_2_v)
+
+        # Optimized Cython trace:
+        for a in range(N_bins):
+            for b in range(N_bins):
+                for c in range(N_bins):
+                    for d in range(N_bins):
+                        trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell(a)*vol_shell(b)*vol_shell(c)*vol_shell(d)) )
+        return trace
+    #
+    # Without correlations there is no Trace to compute,
+    # just a sum over bins:
+    #
+    else:
+        # Check if some element of the matrix is zero anyway:
+        if var1>=N_cosm_vars and var2>=N_cosm_vars and var1!=var2:
+            return 0.
+        else:
+            # Optimise the sum over bins:
+            if var1>N_cosm_vars:
+                bin = var1-N_cosm_vars # bin_bias
+                return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
+            elif var2>N_cosm_vars:
+                bin = var2-N_cosm_vars # bin_bias
+                return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
+            else:
+                result = 0.
+                for bin in range(N_bins):
+                    result += vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
+                return result
+
 
 def trace_py(k,mu,var1,var2):
     return trace(k,mu,var1,var2)
@@ -275,7 +297,7 @@ cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
 
 #--------------------------------------------------------------
 #--------------------------------------------------------------
-# Interpolation Trace:
+# Trace interpolation: (just for performance opt.)
 #--------------------------------------------------------------
 #--------------------------------------------------------------
 cdef enum:
@@ -371,8 +393,6 @@ def adapt_trace_tot(var1, var2, Nk_start=15, Nmu=10, tol=0.05, min_points=10, ma
     alloc_interp_GSL_2D(vect_k, vect_mu, final_trSamples.T.flatten(), &trace_tools[var1][var2])
 
 
-
-
 def init_Trace_term(var1, var2, Nk=50, Nmu=4):
     # Read content traces folder:
     OUTPUT_PATH_TRACE = "INPUT/traces/"
@@ -415,7 +435,7 @@ cdef enum:
 cdef:
     size_t MAX_ALLOC = max_alloc_const
     size_t MAX_ALLOC_K = max_alloc_const_K
-    double rel_prec = 1e-2
+    double rel_prec = 1e-8
     double abs_prec = 1e-6
 cdef:
     gsl_integration_workspace * W_k
@@ -443,9 +463,9 @@ cdef double argument_k(double k, void *input): #var1, var2, bin_kmax
     cdef gsl_function F_mu
     F_mu.function = &argument_mu
     params[0], params[1], params[2], params[3] = k, vars[0], vars[1], vars[2]
-    cdef double result = eval_integration_GSL(0., 1., abs_prec, rel_prec, params, W_mu, &F_mu, MAX_ALLOC)
+    cdef double result = eval_integration_GSL(-1., 1., abs_prec, rel_prec, params, W_mu, &F_mu, MAX_ALLOC)
     # print "(%g,   %g) "%(k, result)
-    return 2*result
+    return result
 
 #------------------------
 # FISHER MATRIX element:
@@ -455,16 +475,18 @@ cdef:
 
 AP_flag = False
 interpolate_Trace = True
+typeFM = "correlations+windowFun"
 
 k_min_hard = 0.001
 k_max_hard = 0.5
-def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=True, double fixed_kmax=0.2):
+def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=False, type_FM_input="correlations+windowFun", double fixed_kmax=0.2):
     global AP_flag, mode_kmax
     AP_flag=check_AP
     mode_kmax = fixed_kmax
 
-    global interpolate_Trace
+    global interpolate_Trace, typeFM
     interpolate_Trace = interp_Tr
+    typeFM = type_FM_input
     # BEST SOLUTION: interpolate Trace before and only check if it's there!
     # if interpolate_Trace:
     #     init_Trace() # Compute or import interpolation
@@ -497,12 +519,19 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=True, do
 #------------------------
 # Computation of FM:
 #------------------------
-def FM(int check_AP=0, FMname="test", interp_Tr=True, fixed_kmax=0.2):
+#
+# Types available:
+#  - uncorrelated
+#  - correlations
+#  - windowFun
+#  - correlations+windowFun (default)
+#
+def FM(int check_AP=0, FMname="test", interp_Tr=False, type_FM_input="correlations+windowFun", fixed_kmax=0.2):
     FM = np.zeros([N_tot_vars,N_tot_vars])
     for var1 in range(N_tot_vars):
         for var2 in range(var1,N_tot_vars):
             start = time.clock()
-            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,interp_Tr,fixed_kmax)
+            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,interp_Tr,type_FM_input,fixed_kmax)
             stop = time.clock()
             FM[var2,var1]=FM[var1,var2]
             np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins.csv" %(FMname,check_AP,N_bins), FM)
@@ -514,58 +543,58 @@ def FM(int check_AP=0, FMname="test", interp_Tr=True, fixed_kmax=0.2):
 # PLOTTING TRACE:
 # #################
 
-def plot_trace(int var1, int var2, N_k=100,N_mu=10,k_min=1e-3,k_max=0.5):
-    k_vect = np.linspace(k_min,k_max,N_k)
-    # k_vect = np.logspace(np.log10(k_min),np.log10(k_max),N_k)
-    mu_vect = np.linspace(-1.,1.,N_mu)
-    samples = np.zeros([N_k,N_mu])
-    cdef:
-        double[:,::1] samples_c = samples
-        double[::1] k_vect_c = k_vect
-        double[::1] mu_vect_c = mu_vect
-    time_count = 0
-    total_start = time.time()
-    for i_k in range(N_k):
-        for i_mu in range(N_mu):
-            samples_c[i_k,i_mu] = trace(k_vect_c[i_k],mu_vect_c[i_mu],var1,var2)
-    total_stop = time.time()
-    print "Trace computation: %g seconds" %(total_stop-total_start)
-    np.savetxt("OUTPUT/trace/trace_3D_vars_%d%d.csv" %(var1,var2),samples)
+# def plot_trace(int var1, int var2, N_k=100,N_mu=10,k_min=1e-3,k_max=0.5):
+#     k_vect = np.linspace(k_min,k_max,N_k)
+#     # k_vect = np.logspace(np.log10(k_min),np.log10(k_max),N_k)
+#     mu_vect = np.linspace(-1.,1.,N_mu)
+#     samples = np.zeros([N_k,N_mu])
+#     cdef:
+#         double[:,::1] samples_c = samples
+#         double[::1] k_vect_c = k_vect
+#         double[::1] mu_vect_c = mu_vect
+#     time_count = 0
+#     total_start = time.time()
+#     for i_k in range(N_k):
+#         for i_mu in range(N_mu):
+#             samples_c[i_k,i_mu] = trace(k_vect_c[i_k],mu_vect_c[i_mu],var1,var2)
+#     total_stop = time.time()
+#     print "Trace computation: %g seconds" %(total_stop-total_start)
+#     np.savetxt("OUTPUT/trace/trace_3D_vars_%d%d.csv" %(var1,var2),samples)
 
-    # ######################
-    # # Plot this thing...
-    # # Result ---> it's a mess ;D
-    # ######################
-    # from mpl_toolkits.mplot3d import Axes3D
-    # from matplotlib import cm
-    # from matplotlib.ticker import LinearLocator, FormatStrFormatter
-    # fig = pl.figure()
-    # ax = fig.gca(projection='3d')
-    # # X = np.arange(-5, 5, 0.25)
-    # # Y = np.arange(-5, 5, 0.25)
-    # # R = np.sqrt(X**2 + Y**2)
-    # # Z = np.sin(R)
-    # mu_vect_m, k_vect_m  = np.meshgrid(mu_vect, k_vect)
-    # surf = ax.plot_surface(k_vect_m, mu_vect_m, np.log10(samples), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
-    # # # ax.set_zlim(-1.01, 1.01)
-    # ax.zaxis.set_major_locator(LinearLocator(10))
-    # ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
-    # # ax.zaxis.set_scale('log')
-    # fig.colorbar(surf, shrink=0.5, aspect=5)
-    # fig.savefig('plots/trace/trace_3D_vars_%d%d.pdf'%(var1,var2))
+#     # ######################
+#     # # Plot this thing...
+#     # # Result ---> it's a mess ;D
+#     # ######################
+#     # from mpl_toolkits.mplot3d import Axes3D
+#     # from matplotlib import cm
+#     # from matplotlib.ticker import LinearLocator, FormatStrFormatter
+#     # fig = pl.figure()
+#     # ax = fig.gca(projection='3d')
+#     # # X = np.arange(-5, 5, 0.25)
+#     # # Y = np.arange(-5, 5, 0.25)
+#     # # R = np.sqrt(X**2 + Y**2)
+#     # # Z = np.sin(R)
+#     # mu_vect_m, k_vect_m  = np.meshgrid(mu_vect, k_vect)
+#     # surf = ax.plot_surface(k_vect_m, mu_vect_m, np.log10(samples), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
+#     # # # ax.set_zlim(-1.01, 1.01)
+#     # ax.zaxis.set_major_locator(LinearLocator(10))
+#     # ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+#     # # ax.zaxis.set_scale('log')
+#     # fig.colorbar(surf, shrink=0.5, aspect=5)
+#     # fig.savefig('plots/trace/trace_3D_vars_%d%d.pdf'%(var1,var2))
 
-    # fig2=pl.figure()
-    # ax1=fig2.add_subplot(111)
-    # ax1.plot(k_vect,samples[:,0],'r-',label="Trace along $\\mu=-1$")
-    # # ax1.plot(vect_k,class_fct['P_0'](vect_k),'b-',label="Class Spectrum")
-    # ax1.grid(True)
-    # ax1.legend(loc='best')
-    # ax1.set_yscale('log')
-    # # ax1.set_xlabel("$k$ [$h$/Mpc]")
-    # # ax1.set_ylabel("$P(x)$ [(Mpc/$h$)$^3$]")
-    # fig2.savefig('plots/trace/trace_along_mu_vars%d%d.pdf'%(var1,var2))
-    # np.savetxt("OUTPUT/trace/trace_along_mu_vars%d%d.csv"%(var1,var2),np.column_stack((k_vect,samples[:,0])))
-    return k_vect, samples[:,0]
+#     # fig2=pl.figure()
+#     # ax1=fig2.add_subplot(111)
+#     # ax1.plot(k_vect,samples[:,0],'r-',label="Trace along $\\mu=-1$")
+#     # # ax1.plot(vect_k,class_fct['P_0'](vect_k),'b-',label="Class Spectrum")
+#     # ax1.grid(True)
+#     # ax1.legend(loc='best')
+#     # ax1.set_yscale('log')
+#     # # ax1.set_xlabel("$k$ [$h$/Mpc]")
+#     # # ax1.set_ylabel("$P(x)$ [(Mpc/$h$)$^3$]")
+#     # fig2.savefig('plots/trace/trace_along_mu_vars%d%d.pdf'%(var1,var2))
+#     # np.savetxt("OUTPUT/trace/trace_along_mu_vars%d%d.csv"%(var1,var2),np.column_stack((k_vect,samples[:,0])))
+#     return k_vect, samples[:,0]
 
 
 

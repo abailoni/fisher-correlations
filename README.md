@@ -1,2 +1,2 @@
-# fisher-correlations
-Compute Fisher matrix considering correlations between different bins
+# FM correlations
+To be continued...

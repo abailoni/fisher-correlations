@@ -146,9 +146,9 @@ cdef double der_sigma8(int bin, double k, double mu):
 cdef double der_bias(int bin, double k, double mu, int bin_bias) except -1:
     if bin==bin_bias:
         result =observed_spectrum(bin, k, mu) * 2 * (1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2) )
-        return(result)
+        return result
     else:
-        return(0.)
+        return 0.
 
 
 # Main routine for derivatives:
@@ -176,8 +176,8 @@ cdef enum:
 cdef:
     size_t MAX_ALLOC = max_alloc_const
     double CHECK_DER_K = 0
-    double rel_prec = 1e-8
-    double abs_prec = 1e-6
+    double rel_prec = 1e-11
+    double abs_prec = 1e-11
 cdef:
     gsl_integration_workspace * W_k
     gsl_integration_workspace * W_mu
