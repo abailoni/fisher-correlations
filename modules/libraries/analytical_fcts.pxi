@@ -51,7 +51,7 @@ Om_m_z = (Om_c+Om_b)* (1+z)**3 / Hub**2
 Om_m_z_py = SymToPy(Om_m_z)
 
 def Growth(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0']):
-    return np.exp( NInt( Om_m_z**gamma/(1+z), z, zx, 0, w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0))
+    return np.exp( NInt( Om_m_z**gamma/(1+z), z, zx, 0., w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0))
 
 def beta(bin):
     return ( fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] / bias_bins[bin] )
@@ -371,10 +371,10 @@ def compute_survey_DATA():
             Beta_der_data[n_var[var]][bin] = 1./bias_bins[bin] * Beta_der[var](z_avg[bin])
             lnH_der_data[n_var[var]][bin] = lnH_der[var](z_avg[bin])
             lnD_der_data[n_var[var]][bin] = lnD_der[var](z_avg[bin])
-        # At redshift z=0:
-        lnH_der_0[n_var[var]] = lnH_der[var](0.)
-        lnD_der_0[n_var[var]] = lnD_der[var](0.)
-        print lnH_der_0[n_var[var]], lnD_der_0[n_var[var]]
+        ## At redshift z=0:
+        #lnH_der_0[n_var[var]] = lnH_der[var](0.)
+        #lnD_der_0[n_var[var]] = lnD_der[var](0.)
+        #print lnH_der_0[n_var[var]], lnD_der_0[n_var[var]]
     # Other data: (for CLASS derivatives)
     ref_values_arr = [0, ref_values['h'], ref_values['n_s'], ref_values['Om_b'], ref_values['Om_c']]
     for i in range(5):

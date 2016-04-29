@@ -134,12 +134,13 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     else:
         CLASS_term = 0
 
-    cdef double beta_term = 1./(1+beta_bins[bin1]*mu**2)*( 2*beta_bins[bin1]*mu*mu_der(mu,bin1,var_num) + mu**2*Beta_der_data[var_num][bin1] ) +  1./(1+beta_bins[bin2]*mu**2)*( 2*beta_bins[bin2]*mu*mu_der(mu,bin2,var_num)+ mu**2*Beta_der_data[var_num][bin2] )
+    check_AP = 1 if AP_flag else 0
 
-    # AP TERM:
-    cdef double AP_term = 0.
-    if AP_flag:
-        AP_term = spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
+    cdef double beta_term = 1./(1+beta_bins[bin1]*mu**2)*( check_AP * 2*beta_bins[bin1]*mu*mu_der(mu,bin1,var_num) + mu**2*Beta_der_data[var_num][bin1] ) +  1./(1+beta_bins[bin2]*mu**2)*( check_AP * 2*beta_bins[bin2]*mu*mu_der(mu,bin2,var_num)+ mu**2*Beta_der_data[var_num][bin2] )
+
+    # AP TERM for k:
+    # check_AP = 0. # PUT ALWAYS TO ZERO
+    cdef double AP_term = check_AP * Growth_bins[bin1]*Growth_bins[bin2] * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
     cdef np.intp_t avg_bin = (bin1+bin2)/2
