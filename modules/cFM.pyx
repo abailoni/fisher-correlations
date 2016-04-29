@@ -22,6 +22,7 @@ def init():
     compute_survey_DATA()
     store_int1()
 
+
 #---------------------------------------
 # COMPUTING INTEGRAL 1:
 #---------------------------------------
@@ -138,7 +139,7 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     # AP TERM:
     cdef double AP_term = 0.
     if AP_flag:
-        AP_term = spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num) * k_der(mu,k,bin2,var_num))
+        AP_term = spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
     cdef np.intp_t avg_bin = (bin1+bin2)/2
@@ -428,6 +429,8 @@ def interp_trace_py(k,mu,var1,var2):
 #--------------------------------------------------------------
 #--------------------------------------------------------------
 
+
+
 # Integration variables:
 cdef enum:
     max_alloc_const = 500
@@ -435,8 +438,8 @@ cdef enum:
 cdef:
     size_t MAX_ALLOC = max_alloc_const
     size_t MAX_ALLOC_K = max_alloc_const_K
-    double rel_prec = 1e-8
-    double abs_prec = 1e-6
+    double rel_prec = 1e-4
+    double abs_prec = 1e-4
 cdef:
     gsl_integration_workspace * W_k
     gsl_integration_workspace * W_mu
@@ -526,6 +529,7 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=False, t
 #  - windowFun
 #  - correlations+windowFun (default)
 #
+
 def FM(int check_AP=0, FMname="test", interp_Tr=False, type_FM_input="correlations+windowFun", fixed_kmax=0.2):
     FM = np.zeros([N_tot_vars,N_tot_vars])
     for var1 in range(N_tot_vars):

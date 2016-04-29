@@ -15,7 +15,7 @@ import sympy as sym
 from sympy import srepr
 from re import findall
 
-INT_PREC = 1e-3
+INT_PREC = 1e-6
 
 # - Return variable of an expression in order
 def varExpr(expression):
@@ -70,7 +70,7 @@ def NInt(expression, var, start, stop, **args):
 
 
 # BOTH HORRIBLE PREFORMANCE because the function is lambdified every time the integrand is called or the sub method is used.
-# Furthermore the first version is NOT WORKING! If the parameter is not the first one, it screw up...
+# Furthermore the first version is NOT WORKING! If the parameter is not the first one, it screws up...
 # - NIntegrate of a sympy expression :D --> Brao ti...
 def NIntegrate(expression, var, start, stop, par_array=0):
     if par_array==0:

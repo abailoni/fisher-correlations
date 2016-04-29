@@ -31,6 +31,7 @@ Omega_DE = 1 - (Om_b+Om_c)
 
 # Hubble parameter: (diveded by H_0)
 Hub = sym.sqrt( (Om_c+Om_b)*(1+z)**3 + Omega_DE*sym.exp(3* sym.integrate( (1+w.subs(z,zx))/(1+zx), (zx,0,z)) ) ) #[z, w_1, w_0, Om_m]
+Hub_py = SymToPy(Hub)
 
 # Comoving distance in Mpc/h:
 def comov_dist(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_0=ref_values['w_0'],w_1=ref_values['w_1']):
@@ -54,6 +55,10 @@ def Growth(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['
 
 def beta(bin):
     return ( fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] / bias_bins[bin] )
+
+# Just for test:
+def growth_rate_f(bin):
+    return fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma']
 
 #--------------------------------------------------------------
 # Volume of a shell and top-hat function:
@@ -119,7 +124,7 @@ mu, b_i, b_j = sym.symbols('mu b_i b_j')
 redshift_factor = (1+Om_m_z**gamma/b_i*mu**2) * (1+Om_m_z**gamma/b_j*mu**2)
 
 # Derivates of lnG and Beta wrt the four parameters:
-# (for Beta, bias b_i added only to EUCLID data..)
+# (for Beta, bias b_i added only to EUCLID data.. Why? This is actually not Beta but the growth rate f)
 lnG_der, Beta_der = {}, {}
 
 for var in parameters_derivated:
@@ -143,14 +148,20 @@ lnH_der, lnD_der = {}, {}
 for var in parameters_derivated: # num_var = [3-5] + gamma
     par = sym.symbols(var)
     lnH_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], par=par:  (sym.diff(Hub,par)/Hub).subs([('w_1',w_1),('Om_b',Om_b),('Om_c',Om_c), ('w_0',w_0), ('z',z)])
-    lnD_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], var=var: 1./D_a(z,Om_b,Om_c,w_0,w_1) * 1./(1+z)*c_H0* (-1.) * quad(lambda zx: lnH_der[var](zx,Om_b,Om_c,w_1,w_0),0,z,epsrel=INT_PREC)[0]
+    lnD_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], var=var: 1./D_a(z,Om_b,Om_c,w_0,w_1) * 1./(1+z)*c_H0* (-1.) * quad(lambda zx: lnH_der[var](zx,Om_b,Om_c,w_1,w_0)/fnEv(Hub_py,z=zx,w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c']) ,0,z,epsrel=INT_PREC)[0]
 
 
 # Derivative of mu wrt the four parameters: # num_var = [3-5] + gamma
 cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
-    return(mu_der_lnH(mu)*lnH_der_data[var_num][bin] + mu_der_lnD(mu)*lnD_der_data[var_num][bin])
+    if bin==-1: # actually for mu is not necessary...
+        return mu_der_lnH(mu)*lnH_der_0[var_num] + mu_der_lnD(mu)*lnD_der_0[var_num]
+    else:
+        return mu_der_lnH(mu)*lnH_der_data[var_num][bin] + mu_der_lnD(mu)*lnD_der_data[var_num][bin]
 cdef double k_der(double mu, double k, np.intp_t bin, np.intp_t var_num):
-    return(k_der_lnH(mu,k)*lnH_der_data[var_num][bin] + k_der_lnD(mu,k)*lnD_der_data[var_num][bin])
+    if bin==-1:
+        return k_der_lnH(mu,k)*lnH_der_0[var_num] + k_der_lnD(mu,k)*lnD_der_0[var_num]
+    else:
+        return k_der_lnH(mu,k)*lnH_der_data[var_num][bin] + k_der_lnD(mu,k)*lnD_der_data[var_num][bin]
 
 
 #--------------------------------------------------------------
@@ -249,6 +260,8 @@ cdef:
     double[:,::1] Beta_der_data # N_vars x N_bins
     double[:,::1] lnH_der_data # N_vars x N_bins
     double[:,::1] lnD_der_data # N_vars x N_bins
+    double[::1] lnH_der_0 # N_vars
+    double[::1] lnD_der_0 # N_vars
     double[::1] ref_val_v = np.empty(5) #for CLASS derivatives
     double[::1] k_max_data # N_bins
     double[::1] n_dens_c # N_bins
@@ -344,10 +357,11 @@ def compute_survey_DATA():
 
     # Derivatives and funtions:
     print " - derivatives..."
-    global lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data, Growth_bins, beta_bins
+    global lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data, Growth_bins, beta_bins, lnH_der_0, lnD_der_0
     Growth_bins = np.array([Growth(zx) for zx in z_avg])
     beta_bins = np.array([ beta(bin) for bin in range(N_bins)])
     lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data = np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins])
+    lnH_der_0, lnD_der_0 = np.zeros(N_vars), np.zeros(N_vars)
     #parameters_derivated = ['Om_m', 'w_0', 'w_1', 'gamma']
     parameters_derivated = ['Om_b','Om_c', 'w_0']
     for var in parameters_derivated: # num_var = [2-4]
@@ -357,7 +371,10 @@ def compute_survey_DATA():
             Beta_der_data[n_var[var]][bin] = 1./bias_bins[bin] * Beta_der[var](z_avg[bin])
             lnH_der_data[n_var[var]][bin] = lnH_der[var](z_avg[bin])
             lnD_der_data[n_var[var]][bin] = lnD_der[var](z_avg[bin])
-
+        # At redshift z=0:
+        lnH_der_0[n_var[var]] = lnH_der[var](0.)
+        lnD_der_0[n_var[var]] = lnD_der[var](0.)
+        print lnH_der_0[n_var[var]], lnD_der_0[n_var[var]]
     # Other data: (for CLASS derivatives)
     ref_values_arr = [0, ref_values['h'], ref_values['n_s'], ref_values['Om_b'], ref_values['Om_c']]
     for i in range(5):

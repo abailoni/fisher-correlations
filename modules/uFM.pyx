@@ -1,4 +1,5 @@
 
+
 #------------------------
 # Importing modules and defining default data:
 #------------------------
@@ -176,8 +177,8 @@ cdef enum:
 cdef:
     size_t MAX_ALLOC = max_alloc_const
     double CHECK_DER_K = 0
-    double rel_prec = 1e-11
-    double abs_prec = 1e-11
+    double rel_prec = 1e-8
+    double abs_prec = 1e-8
 cdef:
     gsl_integration_workspace * W_k
     gsl_integration_workspace * W_mu
