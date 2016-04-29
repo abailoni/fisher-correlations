@@ -1,4 +1,4 @@
-# Fisher Matrix correlations
+## Fisher Matrix correlations
 Taking into account the window function and the correlation among redshift bins.
 
 ##
