@@ -35,7 +35,7 @@ def Fourier_W_k(x):
     return 3./x**3 * (np.sin(x)-x*np.cos(x))
 
 # Set compute_CAMB=True to force the computation of the data
-def compute_CAMB_spectra(N_points=290,mink=1e-5,maxk=1.55,compute_CAMB = False):
+def compute_CAMB_spectra(compute_CAMB=False,N_points=290,mink=1e-5,maxk=1.55):
     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
     ref_values_array = np.array([ref_values[var] for var in import_variables[1:]])
     CAMB_spectra, CAMB_s8 = {}, {} # s8 no longer necessary..
@@ -43,6 +43,7 @@ def compute_CAMB_spectra(N_points=290,mink=1e-5,maxk=1.55,compute_CAMB = False):
 
     # -------------------------------------
     # Check if data were already computed:
+    # (not working! It does not check if the redshift is the same)
     # -------------------------------------
     for (dirpath, dirnames, filenames) in walk(INPUT_PATH):
         names = [ fi for fi in filenames if fi.endswith(".csv") ]
@@ -82,54 +83,68 @@ def compute_CAMB_spectra(N_points=290,mink=1e-5,maxk=1.55,compute_CAMB = False):
         pars.InitPower.set_params(ns=ns)
         print "\nComputing spectrum and derivatives with CAMB:"
         print " - reference spectrum,"
-        pars.set_matter_power(redshifts=[0.], kmax=maxk)
+        pars.set_matter_power(redshifts=[z_avg[0], 0.], kmax=maxk)
         pars.NonLinear = model.NonLinear_none
         results = camb.get_results(pars)
         kh, z, CAMB_spectra["spectrum"] = results.get_matter_power_spectrum(minkh=mink, maxkh=maxk, npoints = N_points)
         kh = np.array(kh)
-        CAMB_spectra["spectrum"] = np.array(CAMB_spectra["spectrum"][0])
-        #CAMB_s8["spectrum"] = np.array(results.get_sigma8())
+        # Get sigma8 at z=0:
+        CAMB_s8["spectrum"] = np.array(results.get_sigma8())
+        print CAMB_s8["spectrum"]
+        # Spectrum at z=first_bin:
+        CAMB_spectra["spectrum"] = np.array(CAMB_spectra["spectrum"][0,:]).T  *(ref_values['sigma8']/CAMB_s8["spectrum"][1])**2
         np.savetxt(INPUT_PATH+"spectrum.csv",np.column_stack((kh,CAMB_spectra["spectrum"])))
+
 
         # Hubble parameter:
         print " - h,"
         pars.set_cosmology(H0=h*100*(1+epsilon), ombh2=omb* (h*(1+epsilon))**2, omch2=omc* (h*(1+epsilon))**2)
         results.calc_power_spectra(pars)
         _, _, CAMB_spectra["h"] = results.get_matter_power_spectrum(minkh=mink, maxkh=maxk, npoints = N_points)
-        CAMB_spectra["h"] = np.array(CAMB_spectra["h"][0])
-        #CAMB_s8["h"] = np.array(results.get_sigma8())
+        # Get sigma8 at z=0:
+        CAMB_s8["h"] = np.array(results.get_sigma8())
+        # Spectrum at z=first_bin:
+        CAMB_spectra["h"] = np.array(CAMB_spectra["h"][0,:]).T   *(ref_values['sigma8']/CAMB_s8["h"][1])**2
+        np.savetxt(INPUT_PATH+"h.csv",np.column_stack((kh, CAMB_spectra["h"])))
         pars.set_cosmology(H0=h*100, ombh2=omb*h**2, omch2=omc*h**2)
-        np.savetxt(INPUT_PATH+"h.csv",np.column_stack((kh,CAMB_spectra["h"])))
+
 
         # n_s parameter:
         print " - ns"
         pars.InitPower.set_params(ns=ns*(1+epsilon))
         results.calc_power_spectra(pars)
         _, _, CAMB_spectra["n_s"] = results.get_matter_power_spectrum(minkh=mink, maxkh=maxk, npoints = N_points)
-        CAMB_spectra["n_s"] = np.array(CAMB_spectra["n_s"][0])
-        #CAMB_s8["n_s"] = np.array(results.get_sigma8())
-        pars.InitPower.set_params(ns=ns)
+        # Get sigma8 at z=0:
+        CAMB_s8["n_s"] = np.array(results.get_sigma8())
+        # Spectrum at z=first_bin:
+        CAMB_spectra["n_s"] = np.array(CAMB_spectra["n_s"][0,:]).T   *(ref_values['sigma8']/CAMB_s8["n_s"][1])**2
         np.savetxt(INPUT_PATH+"n_s.csv",np.column_stack((kh,CAMB_spectra["n_s"])))
+        pars.InitPower.set_params(ns=ns)
 
         # Omega_b parameter:
         print " - Omega_b,"
         pars.set_cosmology(ombh2=omb*(1+epsilon)*h**2)
         results.calc_power_spectra(pars)
         _, _, CAMB_spectra["Om_b"] = results.get_matter_power_spectrum(minkh=mink, maxkh=maxk, npoints = N_points)
-        CAMB_spectra["Om_b"] = np.array(CAMB_spectra["Om_b"][0])
-        #CAMB_s8["Om_b"] = np.array(results.get_sigma8())
+        # Get sigma8 at z=0:
+        CAMB_s8["Om_b"] = np.array(results.get_sigma8())
+        # Spectrum at z=first_bin:
+        CAMB_spectra["Om_b"] = np.array(CAMB_spectra["Om_b"][0,:]).T   *(ref_values['sigma8']/CAMB_s8["Om_b"][1])**2
+        np.savetxt(INPUT_PATH+"Om_b.csv",np.column_stack((kh, CAMB_spectra["Om_b"])))
         pars.set_cosmology(ombh2=omb*h**2)
-        np.savetxt(INPUT_PATH+"Om_b.csv",np.column_stack((kh,CAMB_spectra["Om_b"])))
+        print CAMB_s8["Om_b"]
 
         # Omega_c parameter:
         print " - Omega_c,"
         pars.set_cosmology(omch2=omc*(1+epsilon)*h**2)
         results.calc_power_spectra(pars)
         _, _, CAMB_spectra["Om_c"] = results.get_matter_power_spectrum(minkh=mink, maxkh=maxk, npoints = N_points)
-        CAMB_spectra["Om_c"] = np.array(CAMB_spectra["Om_c"][0])
-        #CAMB_s8["Om_c"] = np.array(results.get_sigma8())
-        pars.set_cosmology(omch2=omc*h**2)
+        # Get sigma8 at z=0:
+        CAMB_s8["Om_c"] = np.array(results.get_sigma8())
+        # Spectrum at z=first_bin:
+        CAMB_spectra["Om_c"] = np.array(CAMB_spectra["Om_c"][0,:]).T   * (ref_values['sigma8']/CAMB_s8["Om_c"][1])**2
         np.savetxt(INPUT_PATH+"Om_c.csv",np.column_stack((kh,CAMB_spectra["Om_c"])))
+        pars.set_cosmology(omch2=omc*h**2)
 
 
         np.savetxt(INPUT_PATH+"params.csv",np.column_stack((np.array(import_variables[1:]),ref_values_array)),delimiter=" ", fmt="%s")
@@ -151,7 +166,7 @@ def compute_CAMB_spectra(N_points=290,mink=1e-5,maxk=1.55,compute_CAMB = False):
     # ------------------------------------
     # Interpolate with GSL and normalise:
     # ------------------------------------
-    print "\nInterpolating with GSL and computing sigma8. . ."
+    print "\nInterpolating with GSL. . ."
     global norms, zero_spectrum_tools_anorm, zero_spectrum_tools, derivatives_tools_anorm, derivatives_tools, tools_anorm, tools
     for var in import_variables:
         if var=="spectrum":
@@ -160,10 +175,11 @@ def compute_CAMB_spectra(N_points=290,mink=1e-5,maxk=1.55,compute_CAMB = False):
         else: # numvar goes from 1 to 4
             tools_anorm = &derivatives_tools_anorm[n_var_import[var]]
             tools = &derivatives_tools[n_var_import[var]]
-        alloc_interp_GSL(kh, CAMB_spectra[var], tools_anorm)
-        # Normalise and interpolate:
-        norms[var] = 2*np.pi**2 / quad( lambda k, var=var: k**2 * eval_interp_GSL(k, tools_anorm) * Fourier_W_k(k*R_sigma)**2 , kminref, kmaxref, epsrel=sigma8precision, full_output=1)[0]
-        alloc_interp_GSL(kh, CAMB_spectra[var] * ref_values['sigma8']**2 *norms[var], tools)
+        #alloc_interp_GSL(kh, CAMB_spectra[var], tools_anorm)
+        ## Normalise and interpolate:
+        #norms[var] = 2*np.pi**2 / quad( lambda k, var=var: k**2 * eval_interp_GSL(k, tools_anorm) * Fourier_W_k(k*R_sigma)**2 , kminref, kmaxref, epsrel=sigma8precision, full_output=1)[0]
+        #alloc_interp_GSL(kh, CAMB_spectra[var] * ref_values['sigma8']**2 *norms[var], tools)
+        alloc_interp_GSL(kh, CAMB_spectra[var], tools)
     print "--> Done!"
 
     # Set k_min and k_max:
