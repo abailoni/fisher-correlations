@@ -111,12 +111,16 @@ cdef double numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3
     else:
         return CAMB_numerical_paramDER(k,var+1)
 
+
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
 #--------------------------------------------------------------
 # Observed spectrum: (optimized!)
 cdef double observed_spectrum(int bin1, int bin2, double k, double mu):
     return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum(k,bin1,bin2)
+
+def observed_spectrum_py(bin1,bin2,k,mu):
+    return observed_spectrum(bin1,bin2,k,mu)
 
 # Observed terms: (optimized!)
 # to avoid division by zero given by windowed_Spectrum with i!=j
@@ -141,7 +145,8 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 
     # AP TERM for k:
     # check_AP = 0. # PUT ALWAYS TO ZERO
-    cdef double AP_term = check_AP * spectrum_der_k(k,0,0) * k_der(mu,k,0,var_num)
+    cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
+
 
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
