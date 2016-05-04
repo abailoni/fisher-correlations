@@ -48,35 +48,35 @@ cdef double interpolation_GSL(double x, double[::1] data_x, double[::1] data_y):
     gsl_interp_accel_free (acc)
     return(y)
 
-# --------------------
-# 2D interpolation:
-# --------------------
-cdef struct interpolation_tools_2D:
-    gsl_spline2d* spline
-    gsl_interp_accel* acc_x
-    gsl_interp_accel* acc_y
+## --------------------
+## 2D interpolation:
+## --------------------
+#cdef struct interpolation_tools_2D:
+#    gsl_spline2d* spline
+#    gsl_interp_accel* acc_x
+#    gsl_interp_accel* acc_y
 
-@cython.boundscheck(False) # turn off array bounds check
-@cython.wraparound(False) # turn off negative indices ([-1,-1])
-cdef void alloc_interp_GSL_2D(double[::1] data_x, double[::1] data_y, double[::1] data_z, interpolation_tools_2D *interp_data):
-    cdef:
-        int Nx = data_x.shape[0]
-        int Ny = data_y.shape[0]
+#@cython.boundscheck(False) # turn off array bounds check
+#@cython.wraparound(False) # turn off negative indices ([-1,-1])
+#cdef void alloc_interp_GSL_2D(double[::1] data_x, double[::1] data_y, double[::1] data_z, interpolation_tools_2D *interp_data):
+#    cdef:
+#        int Nx = data_x.shape[0]
+#        int Ny = data_y.shape[0]
 
-    interp_data.acc_x, interp_data.acc_y = gsl_interp_accel_alloc(), gsl_interp_accel_alloc()
-    interp_data.spline = gsl_spline2d_alloc(gsl_interp2d_bicubic, Nx, Ny)
-    # Computation spline coeff.:
-    gsl_spline2d_init(interp_data.spline, &data_x[0], &data_y[0], &data_z[0], Nx, Ny)
-    return
+#    interp_data.acc_x, interp_data.acc_y = gsl_interp_accel_alloc(), gsl_interp_accel_alloc()
+#    interp_data.spline = gsl_spline2d_alloc(gsl_interp2d_bicubic, Nx, Ny)
+#    # Computation spline coeff.:
+#    gsl_spline2d_init(interp_data.spline, &data_x[0], &data_y[0], &data_z[0], Nx, Ny)
+#    return
 
-cdef double eval_interp_GSL_2D(double x, double y, interpolation_tools_2D *interp_data):
-    return gsl_spline2d_eval(interp_data.spline, x, y, interp_data.acc_x, interp_data.acc_y)
+#cdef double eval_interp_GSL_2D(double x, double y, interpolation_tools_2D *interp_data):
+#    return gsl_spline2d_eval(interp_data.spline, x, y, interp_data.acc_x, interp_data.acc_y)
 
-cdef void free_interp_GSL_2D(interpolation_tools_2D *interp_data):
-    gsl_spline2d_free (interp_data.spline)
-    gsl_interp_accel_free (interp_data.acc_x)
-    gsl_interp_accel_free (interp_data.acc_y)
-    return
+#cdef void free_interp_GSL_2D(interpolation_tools_2D *interp_data):
+#    gsl_spline2d_free (interp_data.spline)
+#    gsl_interp_accel_free (interp_data.acc_x)
+#    gsl_interp_accel_free (interp_data.acc_y)
+#    return
 
 
 ###############################################

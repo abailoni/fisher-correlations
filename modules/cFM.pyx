@@ -1,4 +1,3 @@
-
 ###########
 # Branch:
 ###########
@@ -14,6 +13,7 @@ include "libraries/header.pxi"
 include "libraries/CAMB.pxi"
 
 include "libraries/analytical_fcts.pxi"
+
 
 
 
@@ -143,19 +143,19 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 
     check_AP = 1 if AP_flag else 0
 
-    cdef double beta_term = 1./(1+beta_bins[bin1]*mu**2)*( 0. * 2*beta_bins[bin1]*mu*mu_der(mu,bin1,var_num) + mu**2*Beta_der_data[var_num][bin1] ) +  1./(1+beta_bins[bin2]*mu**2)*( 0. * 2*beta_bins[bin2]*mu*mu_der(mu,bin2,var_num)+ mu**2*Beta_der_data[var_num][bin2] )
+    cdef double beta_term = 1./(1+beta_bins[bin1]*mu**2)*( check_AP * 2*beta_bins[bin1]*mu*mu_der(mu,bin1,var_num) + mu**2*Beta_der_data[var_num][bin1] ) +  1./(1+beta_bins[bin2]*mu**2) * ( check_AP * 2*beta_bins[bin2]*mu*mu_der(mu,bin2,var_num)+ mu**2*Beta_der_data[var_num][bin2] )
     # cdef double beta_term = mu_num_term(k, mu, bin1, var_num)
 
 
     # AP TERM for k:
     # check_AP = 0. # PUT ALWAYS TO ZERO
-    # cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
-    cdef double AP_term = check_AP * Pk_AP_num_der(k, mu, bin1, var_num)
+    cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
+    # cdef double AP_term = check_AP * Pk_AP_num_der(k, mu, bin1, var_num)
 
 
     # Pay attention to lnH_der_data that are computed in z_avg....!!!
-    cdef np.intp_t avg_bin = (bin1+bin2)/2
-    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term + AP_term) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + lnH_der_data[var_num][avg_bin] - 2*lnD_der_data[var_num][avg_bin] + beta_term  )
+    # cdef np.intp_t avg_bin = (bin1+bin2)/2
+    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term + AP_term) + observed_spectrum(bin1, bin2, k, mu) * ( lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + sqrt((lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1])*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2])) + beta_term  )
 
 
 # # Gamma: (optimized!) (var=6)
@@ -308,132 +308,132 @@ cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
     return(trace)
 
 
-#--------------------------------------------------------------
-#--------------------------------------------------------------
-# Trace interpolation: (just for performance opt.)
-#--------------------------------------------------------------
-#--------------------------------------------------------------
-cdef enum:
-    max_N_vars = 50
-cdef:
-    interpolation_tools_2D trace_tools[max_N_vars][max_N_vars]
+# #--------------------------------------------------------------
+# #--------------------------------------------------------------
+# # Trace interpolation: (just for performance opt.)
+# #--------------------------------------------------------------
+# #--------------------------------------------------------------
+# cdef enum:
+#     max_N_vars = 50
+# cdef:
+#     interpolation_tools_2D trace_tools[max_N_vars][max_N_vars]
 
 
-def trace_array(vect_k, vect_mu, var1, var2):
-    cdef:
-         int Nk = vect_k.shape[0], Nmu = vect_mu.shape[0]
-    results = np.empty((Nk,Nmu))
-    cdef:
-        double[::1] vect_k_c = vect_k
-        double[::1] vect_mu_c = vect_mu
-        double[:,::1] results_c = results
-    for ik in range(Nk):
-        for imu in range(Nmu):
-            results_c[ik,imu] = trace(vect_k_c[ik],vect_mu_c[imu],var1,var2)
-    return results
+# def trace_array(vect_k, vect_mu, var1, var2):
+#     cdef:
+#          int Nk = vect_k.shape[0], Nmu = vect_mu.shape[0]
+#     results = np.empty((Nk,Nmu))
+#     cdef:
+#         double[::1] vect_k_c = vect_k
+#         double[::1] vect_mu_c = vect_mu
+#         double[:,::1] results_c = results
+#     for ik in range(Nk):
+#         for imu in range(Nmu):
+#             results_c[ik,imu] = trace(vect_k_c[ik],vect_mu_c[imu],var1,var2)
+#     return results
 
 
-def init_Trace(Nk=50,Nmu=4):
-    print "\nComputing, storing and interpolating traces:"
+# def init_Trace(Nk=50,Nmu=4):
+#     print "\nComputing, storing and interpolating traces:"
 
-    # Read content traces folder:
-    OUTPUT_PATH_TRACE = "INPUT/traces/"
-    for (dirpath, dirnames, filenames) in walk(OUTPUT_PATH_TRACE):
-        names = [ fi for fi in filenames if fi.endswith(".csv") ]
-        break
+#     # Read content traces folder:
+#     OUTPUT_PATH_TRACE = "INPUT/traces/"
+#     for (dirpath, dirnames, filenames) in walk(OUTPUT_PATH_TRACE):
+#         names = [ fi for fi in filenames if fi.endswith(".csv") ]
+#         break
 
-    vect_k = np.linspace(1e-3,0.2,Nk)
-    vect_mu = np.linspace(-1.,1.,Nmu)
-    index = 0
-    for var1 in range(N_tot_vars):
-        for var2 in range(var1,N_tot_vars):
-            file_name = "Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2)
-            if file_name in names:
-                if index==0:
-                    print "Traces computed previously. Importing from file..."
-                flat_arr = np.loadtxt(open(OUTPUT_PATH_TRACE+file_name,"rb")).flatten()
-            else:
-                start = time.time()
-                flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flatten()
-                np.savetxt(OUTPUT_PATH_TRACE+"Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2), flat_arr)
-                run_time = time.time()-start
-                remaining = run_time* (N_tot_vars*(N_tot_vars+1)/2 - index - 1) /60.
-                print "- vars %d and %d: %g sec. \t --> ~%.0f min %d sec to go" %(var1,var2,run_time,remaining,int((remaining -int(remaining)) *60) )
-            alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
-            index+=1
-    print "Done!"
+#     vect_k = np.linspace(1e-3,0.2,Nk)
+#     vect_mu = np.linspace(-1.,1.,Nmu)
+#     index = 0
+#     for var1 in range(N_tot_vars):
+#         for var2 in range(var1,N_tot_vars):
+#             file_name = "Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2)
+#             if file_name in names:
+#                 if index==0:
+#                     print "Traces computed previously. Importing from file..."
+#                 flat_arr = np.loadtxt(open(OUTPUT_PATH_TRACE+file_name,"rb")).flatten()
+#             else:
+#                 start = time.time()
+#                 flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flatten()
+#                 np.savetxt(OUTPUT_PATH_TRACE+"Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2), flat_arr)
+#                 run_time = time.time()-start
+#                 remaining = run_time* (N_tot_vars*(N_tot_vars+1)/2 - index - 1) /60.
+#                 print "- vars %d and %d: %g sec. \t --> ~%.0f min %d sec to go" %(var1,var2,run_time,remaining,int((remaining -int(remaining)) *60) )
+#             alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
+#             index+=1
+#     print "Done!"
 
-def prova(x,y):
-    x_max, y_max = x[-1], y[0]
-    y = y/y_max * x_max
-    return y*y*y*y
+# def prova(x,y):
+#     x_max, y_max = x[-1], y[0]
+#     y = y/y_max * x_max
+#     return y*y*y*y
 
-def adapt_trace_term(var1, var2, Nk_start=50, mu=-1., tol=0.05, min_points=10, max_level=20):
-    args = {'mu':mu, 'var1':var1, 'var2':var2}
-    vect_k = np.linspace(1e-3,0.2,Nk_start)
-    return adapt_sampl.sample_function(trace_log_args, vect_k, tol, min_points, max_level, prova, **args)
+# def adapt_trace_term(var1, var2, Nk_start=50, mu=-1., tol=0.05, min_points=10, max_level=20):
+#     args = {'mu':mu, 'var1':var1, 'var2':var2}
+#     vect_k = np.linspace(1e-3,0.2,Nk_start)
+#     return adapt_sampl.sample_function(trace_log_args, vect_k, tol, min_points, max_level, prova, **args)
 
-def adapt_trace_tot(var1, var2, Nk_start=15, Nmu=10, tol=0.05, min_points=10, max_level=20):
-    # Compute optimised k for mu = -1.0:
-    samples_k, logTr_mu1 = adapt_trace_term(var1, var2, Nk_start, -1., tol, min_points, max_level)
-    print "Numer samples: %d" %(samples_k.shape[0])
+# def adapt_trace_tot(var1, var2, Nk_start=15, Nmu=10, tol=0.05, min_points=10, max_level=20):
+#     # Compute optimised k for mu = -1.0:
+#     samples_k, logTr_mu1 = adapt_trace_term(var1, var2, Nk_start, -1., tol, min_points, max_level)
+#     print "Numer samples: %d" %(samples_k.shape[0])
 
-    # Compute trace samples for other values of mu:
-    Nk_sample = samples_k.shape[0]
-    logTr = np.empty((Nk_sample,Nmu))
-    logTr[:,0] = logTr_mu1.T
-    vect_mu = np.linspace(-1.,1.,Nmu)
-    for i, mu in enumerate(vect_mu[1:]):
-        args = {'mu':mu, 'var1':var1, 'var2':var2}
-        logTr[:,i+1] = trace_log_args(samples_k,**args).T
-        print ".",
+#     # Compute trace samples for other values of mu:
+#     Nk_sample = samples_k.shape[0]
+#     logTr = np.empty((Nk_sample,Nmu))
+#     logTr[:,0] = logTr_mu1.T
+#     vect_mu = np.linspace(-1.,1.,Nmu)
+#     for i, mu in enumerate(vect_mu[1:]):
+#         args = {'mu':mu, 'var1':var1, 'var2':var2}
+#         logTr[:,i+1] = trace_log_args(samples_k,**args).T
+#         print ".",
 
-    # Interpolate k-direction with Akima1DInterpolator: (avoid spline mess)
-    print "\nAkima... ",
-    np.savetxt("temp.csv",logTr)
-    Nk = 3000
-    vect_k = np.linspace(1e-3,0.2,Nk)
-    final_trSamples = np.empty((Nk,Nmu))
-    for i, mu in enumerate(vect_mu):
-        final_trSamples[:,i] = Akima1DInterpolator(samples_k, logTr[:,i].T)(vect_k)
-    # Revert log:
-    # idxs1, idxs2 = (final_trSamples >= 0.).nonzero(), (final_trSamples < 0.).nonzero()
-    # final_trSamples[idxs1] = np.power(10,final_trSamples[idxs1])
-    # final_trSamples[idxs2] = - np.power(10,-final_trSamples[idxs2])
+#     # Interpolate k-direction with Akima1DInterpolator: (avoid spline mess)
+#     print "\nAkima... ",
+#     np.savetxt("temp.csv",logTr)
+#     Nk = 3000
+#     vect_k = np.linspace(1e-3,0.2,Nk)
+#     final_trSamples = np.empty((Nk,Nmu))
+#     for i, mu in enumerate(vect_mu):
+#         final_trSamples[:,i] = Akima1DInterpolator(samples_k, logTr[:,i].T)(vect_k)
+#     # Revert log:
+#     # idxs1, idxs2 = (final_trSamples >= 0.).nonzero(), (final_trSamples < 0.).nonzero()
+#     # final_trSamples[idxs1] = np.power(10,final_trSamples[idxs1])
+#     # final_trSamples[idxs2] = - np.power(10,-final_trSamples[idxs2])
 
-    # Finally interpolate everything with GSL 2D: (spline cubic)
-    print "GSL..."
-    alloc_interp_GSL_2D(vect_k, vect_mu, final_trSamples.T.flatten(), &trace_tools[var1][var2])
-
-
-def init_Trace_term(var1, var2, Nk=50, Nmu=4):
-    # Read content traces folder:
-    OUTPUT_PATH_TRACE = "INPUT/traces/"
-    for (dirpath, dirnames, filenames) in walk(OUTPUT_PATH_TRACE):
-        names = [ fi for fi in filenames if fi.endswith(".csv") ]
-        break
-
-    vect_k = np.linspace(1e-3,0.2,Nk)
-    vect_mu = np.linspace(-1.,1.,Nmu)
-
-    file_name = "Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2)
-    if file_name in names:
-        print "Trace interpolated previously. Importing from file..."
-        flat_arr = np.loadtxt(open(OUTPUT_PATH_TRACE+file_name,"rb")).flatten()
-    else:
-        start = time.time()
-        flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flatten()
-        np.savetxt(OUTPUT_PATH_TRACE+"Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2), flat_arr)
-        run_time = time.time()-start
-        print "Computing trace: %g sec." %(run_time)
-    alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
+#     # Finally interpolate everything with GSL 2D: (spline cubic)
+#     print "GSL..."
+#     alloc_interp_GSL_2D(vect_k, vect_mu, final_trSamples.T.flatten(), &trace_tools[var1][var2])
 
 
-cdef double interp_trace(double k, double mu, int var1, int var2):
-    return eval_interp_GSL_2D(k, mu, &trace_tools[var1][var2])
+# def init_Trace_term(var1, var2, Nk=50, Nmu=4):
+#     # Read content traces folder:
+#     OUTPUT_PATH_TRACE = "INPUT/traces/"
+#     for (dirpath, dirnames, filenames) in walk(OUTPUT_PATH_TRACE):
+#         names = [ fi for fi in filenames if fi.endswith(".csv") ]
+#         break
 
-def interp_trace_py(k,mu,var1,var2):
-    return interp_trace(k,mu,var1,var2)
+#     vect_k = np.linspace(1e-3,0.2,Nk)
+#     vect_mu = np.linspace(-1.,1.,Nmu)
+
+#     file_name = "Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2)
+#     if file_name in names:
+#         print "Trace interpolated previously. Importing from file..."
+#         flat_arr = np.loadtxt(open(OUTPUT_PATH_TRACE+file_name,"rb")).flatten()
+#     else:
+#         start = time.time()
+#         flat_arr = trace_array(vect_k,vect_mu,var1,var2).T.flatten()
+#         np.savetxt(OUTPUT_PATH_TRACE+"Nk%d_Nmu%d_vars_%d-%d.csv" %(Nk,Nmu,var1,var2), flat_arr)
+#         run_time = time.time()-start
+#         print "Computing trace: %g sec." %(run_time)
+#     alloc_interp_GSL_2D(vect_k, vect_mu, flat_arr, &trace_tools[var1][var2])
+
+
+# cdef double interp_trace(double k, double mu, int var1, int var2):
+#     return eval_interp_GSL_2D(k, mu, &trace_tools[var1][var2])
+
+# def interp_trace_py(k,mu,var1,var2):
+#     return interp_trace(k,mu,var1,var2)
 
 #--------------------------------------------------------------
 #--------------------------------------------------------------
@@ -550,7 +550,7 @@ def FM(int check_AP=0, FMname="test", interp_Tr=False, type_FM_input="correlatio
             FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,interp_Tr,type_FM_input,fixed_kmax)
             stop = time.clock()
             FM[var2,var1]=FM[var1,var2]
-            np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins.csv" %(FMname,check_AP,N_bins), FM)
+            np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
             print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
     return FM
 

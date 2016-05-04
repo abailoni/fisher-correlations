@@ -305,27 +305,27 @@ cdef extern from "gsl/gsl_spline.h":
   void gsl_spline_free(gsl_spline * spline) nogil
 
 
-cdef extern from "gsl/gsl_spline2d.h":
-  ctypedef struct gsl_spline2d
-  ctypedef struct gsl_interp2d_type
+#cdef extern from "gsl/gsl_spline2d.h":
+#  ctypedef struct gsl_spline2d
+#  ctypedef struct gsl_interp2d_type
 
-  gsl_interp2d_type * gsl_interp2d_bilinear
-  gsl_interp2d_type * gsl_interp2d_bicubic
+#  gsl_interp2d_type * gsl_interp2d_bilinear
+#  gsl_interp2d_type * gsl_interp2d_bicubic
 
-  gsl_spline2d * gsl_spline2d_alloc (gsl_interp2d_type * T, size_t xsize, size_t ysize) nogil
+#  gsl_spline2d * gsl_spline2d_alloc (gsl_interp2d_type * T, size_t xsize, size_t ysize) nogil
 
-  int gsl_spline2d_init (gsl_spline2d * spline, double xa[], double ya[], double za[], size_t xsize, size_t ysize) nogil
+#  int gsl_spline2d_init (gsl_spline2d * spline, double xa[], double ya[], double za[], size_t xsize, size_t ysize) nogil
 
-  double gsl_spline2d_eval (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc) nogil
-  int gsl_spline2d_eval_e (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc, double * z) nogil
+#  double gsl_spline2d_eval (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc) nogil
+#  int gsl_spline2d_eval_e (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc, double * z) nogil
 
-  double gsl_spline2d_eval_deriv_x (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc) nogil
-  int gsl_spline2d_eval_deriv_x_e (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc, double * d) nogil
+#  double gsl_spline2d_eval_deriv_x (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc) nogil
+#  int gsl_spline2d_eval_deriv_x_e (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc, double * d) nogil
 
-  double gsl_spline2d_eval_deriv_y (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc) nogil
-  int gsl_spline2d_eval_deriv_y_e (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc, double * d) nogil
+#  double gsl_spline2d_eval_deriv_y (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc) nogil
+#  int gsl_spline2d_eval_deriv_y_e (gsl_spline2d * spline, double x, double y, gsl_interp_accel * xacc, gsl_interp_accel * yacc, double * d) nogil
 
-  void gsl_spline2d_free (gsl_spline2d * spline) nogil
+#  void gsl_spline2d_free (gsl_spline2d * spline) nogil
 
 
 
