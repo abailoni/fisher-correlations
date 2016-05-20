@@ -51,10 +51,10 @@ Om_m_z = (Om_c+Om_b)* (1+z)**3 / Hub**2
 Om_m_z_py = SymToPy(Om_m_z)
 
 def Growth(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0']):
-    return np.exp( NInt( Om_m_z**gamma/(1+z), z, zx, 0., w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0))
+    return np.exp( NInt( Om_m_z**gamma/(1+z), z, zx, z_avg[0], w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0))
 
-def beta(bin,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_0=ref_values['w_0'],w_1=ref_values['w_1'],gamma=ref_values['gamma']):
-    return  fnEv(Om_m_z_py,z=z_avg[bin],w_1=w_1,w_0=w_0,Om_b=Om_b,Om_c=Om_c)**gamma / bias_bins[bin]
+def beta(bin):
+    return ( fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] / bias_bins[bin] )
 
 # Just for test:
 def growth_rate_f(bin):
@@ -128,7 +128,7 @@ redshift_factor = (1+Om_m_z**gamma/b_i*mu**2) * (1+Om_m_z**gamma/b_j*mu**2)
 lnG_der, Beta_der = {}, {}
 
 for var in parameters_derivated:
-    lnG_der[var] = lambda zx, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0'],var=var:  NInt(sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var))/(1+z), z, zx, 0., w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0)
+    lnG_der[var] = lambda zx, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0'],var=var:  NInt(sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var))/(1+z), z, zx, z_avg[0], w_1=w_1, Om_b=Om_b, Om_c=Om_c, gamma=gamma, w_0=w_0)
     Beta_der[var] = lambda z, Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],gamma=ref_values['gamma'],w_1=ref_values['w_1'],w_0=ref_values['w_0'], var=var: sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var)).subs([('w_1',w_1),('Om_b',Om_b),('Om_c',Om_c), ('gamma',gamma), ('w_0',w_0), ('z',z)])
 
 
@@ -153,25 +153,16 @@ for var in parameters_derivated: # num_var = [3-5] + gamma
 
 # Derivative of mu wrt the four parameters: # num_var = [3-5] + gamma
 cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
-    return mu_der_lnH(mu)*lnH_der_data[var_num][bin] + mu_der_lnD(mu)*lnD_der_data[var_num][bin]
+    if bin==-1: # actually for mu is not necessary...
+        return mu_der_lnH(mu)*lnH_der_0[var_num] + mu_der_lnD(mu)*lnD_der_0[var_num]
+    else:
+        return mu_der_lnH(mu)*lnH_der_data[var_num][bin] + mu_der_lnD(mu)*lnD_der_data[var_num][bin]
 cdef double k_der(double mu, double k, np.intp_t bin, np.intp_t var_num):
-    return k_der_lnH(mu,k)*lnH_der_data[var_num][bin] + k_der_lnD(mu,k)*lnD_der_data[var_num][bin]
+    if bin==-1:
+        return k_der_lnH(mu,k)*lnH_der_0[var_num] + k_der_lnD(mu,k)*lnD_der_0[var_num]
+    else:
+        return k_der_lnH(mu,k)*lnH_der_data[var_num][bin] + k_der_lnD(mu,k)*lnD_der_data[var_num][bin]
 
-
-# Checking AP numer. derivative:
-cdef double AP_fact_R(double mu, int bin, int nvar): # n_var [2-4]
-    return sqrt( (Hub_mod[nvar+1][bin]*Da_mod[nvar+1][bin]*mu)**2 - (Hub_mod[0][bin]*Da_mod[0][bin])**2 *(mu*mu-1) ) / (Hub_mod[0][bin]*Da_mod[nvar+1][bin])
-cdef double k_AP(double k, double mu, int bin, int nvar): # n_var [2-4]
-    return k * AP_fact_R(mu,bin,nvar)
-cdef double mu_AP(double k, double mu, int bin, int nvar): # n_var [2-4]
-    return mu * Hub_mod[nvar+1][bin] / (AP_fact_R(mu,bin,nvar)*Hub_mod[0][bin])
-cdef double Pk_AP_num_der(double k, double mu, int bin, int nvar): #n_var [2-4]
-    cdef double kAP = k_AP(k,mu,bin,nvar)
-    return ( zero_spectrum(kAP)-zero_spectrum(k) )/ref_val_v[nvar+1]
-# Mu AP term:
-cdef double mu_num_term(double k, double mu, int bin, int nvar): #n_var [2-4]
-    cdef double muAP = mu_AP(k,mu,bin,nvar)
-    return 2 * (log(1+beta_mod[nvar+1][bin]*muAP*muAP) - log(1+beta_bins[bin]*mu*mu)) / ref_val_v[nvar+1]
 
 #--------------------------------------------------------------
 # Derivative of K in k:
@@ -271,7 +262,7 @@ cdef:
     double[:,::1] lnD_der_data # N_vars x N_bins
     double[::1] lnH_der_0 # N_vars
     double[::1] lnD_der_0 # N_vars
-    double[::1] ref_val_v = np.empty(20) #for CLASS derivatives
+    double[::1] ref_val_v = np.empty(5) #for CLASS derivatives
     double[::1] k_max_data # N_bins
     double[::1] n_dens_c # N_bins
 
@@ -284,12 +275,6 @@ cdef:
     double[:,::1] N_v
 # Numpy matrices:
 C = np.zeros([N_bins, N_bins])
-
-# Check AP numer. derivative:
-cdef:
-    double[:,::1] Hub_mod # N_vars x N_bins
-    double[:,::1] Da_mod # N_vars x N_bins
-    double[:,::1] beta_mod # N_vars x N_bins
 
 
 #----------------------------------------------------
@@ -369,8 +354,6 @@ def compute_survey_DATA():
     global com_zbin, com_zbin_avg
     com_zbin = np.array([ comov_dist(zbn) for zbn in z_in])
     com_zbin_avg = np.array([ (com_zbin[i]+com_zbin[i+1])/2. for i in range(N_bins)])
-    for i in range(N_bins):
-        print com_zbin[i]
 
     # Derivatives and funtions:
     print " - derivatives..."
@@ -392,11 +375,10 @@ def compute_survey_DATA():
         #lnH_der_0[n_var[var]] = lnH_der[var](0.)
         #lnD_der_0[n_var[var]] = lnD_der[var](0.)
         #print lnH_der_0[n_var[var]], lnD_der_0[n_var[var]]
-
     # Other data: (for CLASS derivatives)
-    ref_values_arr = [0, ref_values['h'], ref_values['n_s'], ref_values['Om_b'], ref_values['Om_c'], ref_values['w_0'], ref_values['w_1']]
-    for i, val in enumerate(ref_values_arr):
-        ref_val_v[i] = epsilon * val
+    ref_values_arr = [0, ref_values['h'], ref_values['n_s'], ref_values['Om_b'], ref_values['Om_c']]
+    for i in range(5):
+        ref_val_v[i] = epsilon * ref_values_arr[i]
 
     # Densities:
     global n_dens_c
@@ -416,37 +398,5 @@ def compute_survey_DATA():
     N_v = np.identity(N_bins) * inv_n_dens
     C = np.zeros([N_bins, N_bins])
     C_v = C
-
-    # Checking AP numer. derivative:
-    print " - Test AP..."
-    global Hub_mod, Da_mod, beta_mod
-    Hub_mod, Da_mod, beta_mod = np.zeros([N_cosm_vars, N_bins]), np.zeros([N_cosm_vars, N_bins]), np.zeros([N_cosm_vars, N_bins])
-    dict_vars = {'Om_b': ref_values['Om_b'], 'Om_c': ref_values['Om_c'], 'w_0': ref_values['w_0'], 'w_1': ref_values['w_1']}
-    indices_again = {'Om_b':0, 'Om_c':1, 'w_0':2}
-    arr_vars = [ref_values['Om_b'], ref_values['Om_c'], ref_values['w_0']]
-    parameters_der = ['spectrum', 'Om_b','Om_c', 'w_0']
-    for var in parameters_der:
-        for bin in range(N_bins):
-            if var=="spectrum":
-                Hub_mod[0][bin] = fnEv(Hub_py,z=z_avg[bin],**dict_vars)
-                Da_mod[0][bin]  = D_a(z_avg[bin],*arr_vars)
-            else:
-                nvar = n_var_import[var]
-                dict_temp, arr_temp = dict_vars.copy(), list(arr_vars)
-                dict_temp[var], arr_temp[indices_again[var]] = dict_temp[var]+ref_val_v[nvar], arr_temp[indices_again[var]]+ref_val_v[nvar]
-                Hub_mod[nvar][bin] = fnEv(Hub_py,z=z_avg[bin],**dict_temp)
-                Da_mod[nvar][bin]  = D_a(z_avg[bin],*arr_temp)
-                beta_mod[nvar][bin]= beta(bin,*arr_temp)
-
     print "--> Done!\n"
     return
-
-# Export der_variables for Santi-comparison:
-def print_DER():
-    var_names = ['Om_b', 'Om_c', 'w_0']
-    Hub = np.array([[lnH_der_data[n_var[var]][bin] for bin in range(N_bins)] for var in var_names])
-    G = np.array([[lnG_der_data[n_var[var]][bin] for bin in range(N_bins)] for var in var_names])
-    Da = np.array([[lnD_der_data[n_var[var]][bin] for bin in range(N_bins)] for var in var_names])
-    Beta = np.array([[Beta_der_data[n_var[var]][bin] for bin in range(N_bins)] for var in var_names])
-    return [Hub, G, Da, Beta]
-
