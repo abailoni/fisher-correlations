@@ -17,7 +17,6 @@ include "libraries/analytical_fcts.pxi"
 
 
 
-
 # It does all the first necessary things:
 def init():
     compute_CAMB_spectra()
@@ -30,7 +29,9 @@ def init():
 # COMPUTING INTEGRAL 1:
 #---------------------------------------
 
-def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0001,0.5,10000)):
+#FIX THE COMPUTATION OF THE SPECTRA AT k=0 !!
+
+def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     N_k = vect_k.shape[0]
     R = vect_k[-1]
     K_samples, P_samples = np.empty(N_k), np.empty(N_k)
@@ -40,7 +41,6 @@ def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0001,0.5,10000)):
             P_samples[i] = zero_spectrum(vect_k[i])
         else:
             P_samples[i] = CAMB_numerical_paramDER(vect_k[i],n_var_import[name_var])
-
     # Radial FFT:
     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
 
@@ -53,14 +53,12 @@ def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0001,0.5,10000)):
         K_samples[i] = K(vect_k[i],bin1,bin2)
         if name_var=="spectrum":
             P_samples[i] = 1.
-            # if vect_k[i]>0.4 and vect_k[i]<0.1:
+            # if vect_k[i]>=0. and vect_k[i]<0.2:
             #     P_samples[i] = 1.
             # else:
             #     P_samples[i] = 0.
-
     # Radial FFT:
     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
-
 
 
 # Storing and interpolating int1 with GSL:
@@ -73,7 +71,7 @@ cdef:
 
 def store_int1():
     print "Computing, storing and interpolating convolved spectra..."
-    vect_k = np.linspace(0.0001,1.4,7000)
+    vect_k = np.linspace(0.0,1.4,7000)
     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
     start = time.time()
     for bin1 in range(N_bins):
@@ -84,7 +82,8 @@ def store_int1():
 
 def store_int1_test():
     print "Computing, storing and interpolating convolved spectra..."
-    vect_k = np.linspace(0.0001,1.4,7000)
+    vect_k = np.linspace(0.,1.4,7000)
+    # vect_k = np.arange(0.,0.401,1e-4)
     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
     start = time.time()
     for bin1 in range(N_bins):
@@ -139,6 +138,7 @@ def spectrum_py(k,bin1,bin2):
     return spectrum(k,bin1,bin2)
 
 
+
 cdef double numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
     if "windowFun" in typeFM:
         return windowed_numerical_paramDER(k,bin1,bin2,var)
@@ -169,6 +169,7 @@ cdef double observed_terms(int bin1, int bin2, double k, double mu):
 # h and n_s: (optimized!) (var 0-1)
 cdef double der_type_A(int bin1, int bin2, double k, double mu, int var_num):
     return  observed_terms(bin1, bin2, k, mu)*numerical_paramDER(k, bin1, bin2, var_num)
+
 
 
 # Om_b, Om_c, w_0: (optimized!) (var 2-4)

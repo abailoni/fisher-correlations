@@ -35,7 +35,7 @@ def Fourier_W_k(x):
     return 3./x**3 * (np.sin(x)-x*np.cos(x))
 
 # Set compute_CAMB=True to force the computation of the data
-def compute_CAMB_spectra(compute_CAMB=False,N_points=4000,mink=1e-5,maxk=1.55):
+def compute_CAMB_spectra(compute_CAMB=False,N_points=7000,mink=1e-12,maxk=1.55):
     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
     ref_values_array = np.array([ref_values[var] for var in import_variables[1:]])
     CAMB_spectra, CAMB_s8 = {}, {} # s8 no longer necessary..

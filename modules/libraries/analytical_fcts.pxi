@@ -37,13 +37,17 @@ Hub_py = SymToPy(Hub)
 #def comov_dist(zx,Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'],w_0=ref_values['w_0'],w_1=ref_values['w_1']):
 #    return c_H0*NInt(1/Hub,z,0,zx, w_1=w_1, Om_b=Om_b, Om_c=Om_c, w_0=w_0)
 
+def Hubble(zx,**cosmo_params):
+    for param in ref_values:
+        if param not in cosmo_params:
+            cosmo_params[param] = ref_values[param]
+    return fnEv(Hub_py,z=zx,**cosmo_params)
+
 def comov_dist(zx,**cosmo_params):
     for param in ref_values:
         if param not in cosmo_params:
             cosmo_params[param] = ref_values[param]
     return c_H0 * NInt(1/Hub,z,0,zx,**cosmo_params)
-
-
 
 # Angular diameter distance: (in units of c/H_0)
 def D_a(zx,**cosmo_params):
@@ -111,13 +115,17 @@ cdef double W_compiled(double mod_k, int bin):
     if mod_k!=0:
         return -(-r1*cos(mod_k*r1)/mod_k + sin(mod_k*r1)/(mod_k*mod_k))/mod_k + (-r2*cos(mod_k*r2)/mod_k + sin(mod_k*r2)/(mod_k*mod_k))/mod_k
     else:
-        return 0.
+        print "Warning: W_fourier(k) computed at k=0"
+        return vol_shell_mod(bin)
 
 #cdef double W(double k_modulus, int bin):
 #    return 1./vol_shell_mod(bin)*W_compiled(k_modulus, com_zbin[bin],com_zbin[bin+1])
 
 cdef double K(double mod_k, int bin1, int bin2):
-    return 1./(vol_shell_mod(bin1)*vol_shell_mod(bin2)) * W_compiled(mod_k,bin1) * W_compiled(mod_k,bin2)
+    if mod_k!=0:
+        return 1./(vol_shell_mod(bin1)*vol_shell_mod(bin2)) * W_compiled(mod_k,bin1) * W_compiled(mod_k,bin2)
+    else:
+        return 1.
 def K_py(mod_k,bin1,bin2):
     return K(mod_k,bin1,bin2)
 
@@ -161,6 +169,7 @@ def lnG_der(zx,var):
 def Beta_der(z,var):
     return sym.diff(Om_m_z**sym.symbols('gamma'),sym.symbols(var)).subs([('w_1',ref_values['w_1']),('Om_b',ref_values['Om_b']),('Om_c',ref_values['Om_c']), ('gamma',ref_values['gamma']), ('w_0',ref_values['w_0']), ('z',z)])
 
+
 # Derivatives of k and mu wrt ln(H) and ln(D):
 cdef double mu_der_lnH(double mu):
     return(-mu * (mu**2-1))
@@ -182,6 +191,13 @@ def lnH_der(z,var):
     return (sym.diff(Hub,sym.symbols(var))/Hub).subs([('w_1',ref_values['w_1']),('Om_b',ref_values['Om_b']),('Om_c',ref_values['Om_c']), ('w_0',ref_values['w_0']), ('z',z)])
 def lnD_der(z,var):
     return 1./D_a(z,**ref_values) * 1./(1+z)*c_H0* (-1.) * quad(lambda zx: lnH_der(zx,var)/fnEv(Hub_py,z=zx,**ref_values),0,z,epsrel=INT_PREC)[0]
+
+
+# FASTER (not at all...) NUMERICAL DERIVATIVES:
+def Fun_der_num(fun,z,var): # for G, H and D_a
+    return (fun(z,**{var: ref_values[var]+epsilon}) - fun(z,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
+def Beta_der_num(bin, var):
+    return (beta(bin,**{var: ref_values[var]+epsilon}) - beta(bin,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
 
 # Derivative of mu wrt the four parameters: # num_var = [3-5] + gamma
 cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
@@ -401,8 +417,6 @@ def compute_survey_DATA():
     global com_zbin, com_zbin_avg
     com_zbin = np.array([ comov_dist(zbn) for zbn in z_in])
     com_zbin_avg = np.array([ (com_zbin[i]+com_zbin[i+1])/2. for i in range(N_bins)])
-    for i in range(N_bins):
-        print com_zbin[i]
 
     # Derivatives and funtions:
     print " - derivatives..."
@@ -415,11 +429,19 @@ def compute_survey_DATA():
     parameters_derivated = ['Om_b','Om_c', 'w_0']
     for var in parameters_derivated: # num_var = [2-4]
         for bin in range(N_bins):
+            # NUMERICAL:
+            #Beta_der_data[n_var[var]][bin] = Beta_der_num(bin,var)
+            #lnG_der_data[n_var[var]][bin] = Fun_der_num(Growth,z_avg[bin],var) / Growth[bin]
+            #lnH_der_data[n_var[var]][bin] = Fun_der_num(Hubble,z_avg[bin],var) / Hubble(z_avg[bin])
+            #lnD_der_data[n_var[var]][bin] = Fun_der_num(D_a,z_avg[bin],var) /
+
+            # ANALYTICAL: (almost same time... this damn fnEv is so slow...)
             # for the first two also add bias:
             lnG_der_data[n_var[var]][bin] = lnG_der(z_avg[bin],var)
             Beta_der_data[n_var[var]][bin] = 1./bias_bins[bin] * Beta_der(z_avg[bin],var)
             lnH_der_data[n_var[var]][bin] = lnH_der(z_avg[bin],var)
             lnD_der_data[n_var[var]][bin] = lnD_der(z_avg[bin],var)
+
         ## At redshift z=0:
         #lnH_der_0[n_var[var]] = lnH_der[var](0.)
         #lnD_der_0[n_var[var]] = lnD_der[var](0.)

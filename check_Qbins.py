@@ -45,43 +45,50 @@ OUTPUT_DIR = "plots/convolved_spectra/"
 import modules.cFM as cFM
 
 N_k = 3000
-k_vect = np.logspace(np.log10(1e-4),np.log10(1.),N_k)
-bin1, bin2 = 0, 0
+vect_k = np.linspace(0.,1.38,N_k)
+# vect_k = np.logspace(np.log10(1e-4),np.log10(0.38),N_k)
+bin1, bin2 = 0, 1
+
 
 cFM.compute_CAMB_spectra()
 cFM.import_zero_spectrum_der_k()
 cFM.compute_survey_DATA()
+cFM.store_int1()
 cFM.store_int1_test()
 cFM.set_typeFM("windowFun")
 
 spectrum, convSpect, K = np.empty(N_k), np.empty(N_k), np.empty(N_k)
 for i in range(N_k):
-    if k_vect[i]>0.001 and k_vect[i]<0.1:
+    if vect_k[i]>=0. and vect_k[i]<0.2:
         spectrum[i] = 1.
     else:
         spectrum[i] = 0.
-    K[i] = cFM.K_py(k_vect[i],bin1,bin2)
-    convSpect[i]= cFM.spectrum(k,bin1,bin2)
+    # spectrum[i] = 1.
+    K[i] = cFM.K_py(vect_k[i],bin1,bin2)
+    convSpect[i]= cFM.spectrum_py(vect_k[i],bin1,bin2)
 
-k1, k2 = np.linspace(0.00000001,1.4,7000), np.linspace(0.00000001,10,70000)
-convSpect1 = cFM.test_integral_1(bin1,bin2,"spectrum",k1)
-convSpect2 = cFM.test_integral_1(bin1,bin2,"spectrum",k2)
+print convSpect[0]
+print cFM.K_py(1e-5,bin1,bin2), cFM.K_py(1e-4,bin1,bin2)
 
-np.savetxt("Q_constant_01.csv",np.column_stack((k_vect,K)))
+# k1, k2 = np.linspace(0.00000001,1.4,7000), np.linspace(0.00000001,10,70000)
+# convSpect1 = cFM.test_integral_1(bin1,bin2,"spectrum",k1)
+# convSpect2 = cFM.test_integral_1(bin1,bin2,"spectrum",k2)
+
+# np.savetxt("Q_constant_01.csv",np.column_stack((vect_k,K)))
 
 
-k_deciso = 0.05
-idx1, idx2 = (np.abs(k1-k_deciso)<5e-4).nonzero(), (np.abs(k2-k_deciso)<5e-4).nonzero()
-print convSpect1[idx1[0][0]],convSpect2[idx2[0][0]]
-print (convSpect1[idx1[0][0]]-convSpect2[idx2[0][0]])/convSpect1[idx1[0][0]]*100
+# k_deciso = 0.05
+# idx1, idx2 = (np.abs(k1-k_deciso)<5e-4).nonzero(), (np.abs(k2-k_deciso)<5e-4).nonzero()
+# print convSpect1[idx1[0][0]],convSpect2[idx2[0][0]]
+# print (convSpect1[idx1[0][0]]-convSpect2[idx2[0][0]])/convSpect1[idx1[0][0]]*100
 
-plot_fcts_PRO([k1,k2],[convSpect1,convSpect2],"test_again",["1","2"],"x")
-quit()
+# plot_fcts_PRO([k1,k2],[convSpect1,convSpect2],"test_again",["1","2"],"x")
+# quit()
 
-np.savetxt("K_01.csv",np.column_stack((k_vect,K)))
+# np.savetxt("K_01.csv",np.column_stack((vect_k,K)))
 
-plot_fcts(k_vect[:-80],[spectrum[:-80],convSpect[:-80], K[:-80]], "test_Q_bins%d_%d" %(bin1,bin2), ["$P_{\\mathrm{lin}}(k;z_{%d})$" %(bin1+1), "$P_{\\mathrm{conv}}(k;z_{%d})$" %(bin1+1), "Qij"],"x")
+plot_fcts(vect_k[:-80],[spectrum[:-80],convSpect[:-80], K[:-80]], "test_Q_konstant_bins%d_%d" %(bin1,bin2), ["$P_{\\mathrm{lin}}(k;z_{%d})$" %(bin1+1), "$P_{\\mathrm{conv}}(k;z_{%d})$" %(bin1+1), "Qij"],"")
 
-# plot_fcts(k_vect,[convSpec_14 - convSpec_7], "difference_%d_%d" %(bin1,bin2), ["$P_{%d,%d}^{14}-P_{%d,%d}^{7}$" %(bin1,bin2,bin1,bin2)],'x')
+# plot_fcts(vect_k,[convSpec_14 - convSpec_7], "difference_%d_%d" %(bin1,bin2), ["$P_{%d,%d}^{14}-P_{%d,%d}^{7}$" %(bin1,bin2,bin1,bin2)],'x')
 
 
