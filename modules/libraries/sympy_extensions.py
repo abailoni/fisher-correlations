@@ -46,17 +46,23 @@ def fnEv(data,**args):
     if len(data[1])==len(arguments):
         return data[0](*arguments)
 
+# The evaluation can be improved with the arrays evaluation:
+# def fnEvNumpy(SymToPydata,**args_array):
+#
+# NInt on the other hand requires a faster sigle-value evaluation, so Theano or Ufuncify. Because the slow part here is actually the repeated evaluation of the final lambda at x (I guess). Here the best would be to have a compiled version (with only an argument x) that then call an ufuncify
+
+
 # 'var' must be a sympy variable, not a string
-# The slow parts are given by the two lambda functions and the lists joining
+# The slow parts are given by the evaluation of the two lambda functions and the lists joining (but that perhaps happens only once..)
 def NInt(expression, var, start, stop, **args):
-    data = SymToPy(expression)
+    SymToPydata = SymToPy(expression)
     arguments = []
-    for option in data[1]:
+    for option in SymToPydata[1]:
         if option in args:
             arguments.append(args[option])
         elif sym.symbols(option)!=var:
             print "Error! Wrong or missing arguments! Accepted:"
-            print data[1]
+            print SymToPydata[1]
             return -1
     var_array = varExpr(expression)
     if var in var_array:
@@ -66,7 +72,7 @@ def NInt(expression, var, start, stop, **args):
     else:
         print "Not valid integration variable inserted"
         return -1
-    return quad(lambda x: data[0](*arguments_before+[x]+arguments_after),start,stop,epsrel=INT_PREC)[0]
+    return quad(lambda x: SymToPydata[0](*arguments_before+[x]+arguments_after),start,stop,epsrel=INT_PREC)[0]
 
 
 # BOTH HORRIBLE PREFORMANCE because the function is lambdified every time the integrand is called or the sub method is used.

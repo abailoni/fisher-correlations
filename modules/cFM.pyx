@@ -29,13 +29,17 @@ def init():
 # COMPUTING INTEGRAL 1:
 #---------------------------------------
 
-#FIX THE COMPUTATION OF THE SPECTRA AT k=0 !!
-
 def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     N_k = vect_k.shape[0]
     R = vect_k[-1]
     K_samples, P_samples = np.empty(N_k), np.empty(N_k)
-    for i in range(N_k):
+
+    # First values at k=0:
+    K_samples[0] = 1.
+    P_samples[0] = 0.
+
+    # Next values:
+    for i in range(1,N_k):
         K_samples[i] = K(vect_k[i],bin1,bin2)
         if name_var=="spectrum":
             P_samples[i] = zero_spectrum(vect_k[i])
@@ -45,7 +49,7 @@ def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
 
 
-def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0001,0.5,10000)):
+def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     N_k = vect_k.shape[0]
     R = vect_k[-1]
     K_samples, P_samples = np.empty(N_k), np.empty(N_k)
@@ -229,7 +233,7 @@ cdef double der_bias(int bin1, int bin2, double k, double mu, int bin_bias) exce
 #--------------------------------------------------------------
 
 # Compute inverse covariance matrix:
-cdef double[:,::1] inverse_matrix_C(double k, double mu):
+def inverse_matrix_C(double k, double mu):
     cdef np.intp_t bin1, bin2
     for bin1 in range(N_bins):
         for bin2 in range(bin1,N_bins):
@@ -249,29 +253,47 @@ cdef double DER(double k, double mu, int var_num, int bin1, int bin2):
         bin_bias = var_num-N_cosm_vars
         return der_bias(bin1,bin2,k,mu,bin_bias)
 
+CORR_BINS = N_bins
+
+
 # Compute matrix of derivatives: (var_num from 0 to 7+N_bins-1)
 cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_der_matrix):
     cdef np.intp_t bin1, bin2
     for bin1 in range(N_bins):
-            for bin2 in range(bin1,N_bins):
-                P_der_matrix[bin1,bin2]=DER(k,mu,var_num,bin1,bin2)
-                P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
+        stop_bin2  = bin1+CORR_BINS+1 if bin1+CORR_BINS+1<N_bins else N_bins
+        for bin2 in range(bin1,stop_bin2):
+            P_der_matrix[bin1,bin2]=DER(k,mu,var_num,bin1,bin2)
+            P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
 
 # Compute Trace:
 cdef double trace(double k, double mu, int var1, int var2):
     cdef double trace = 0
     cdef np.intp_t a, b, c, d
     if "correlations" in typeFM:
-        inverse_C_v = inverse_matrix_C(k, mu)
+        # tick = time.clock()
+        inverse_C = inverse_matrix_C(k, mu) * sqrt_volume_shells
         derivative_matrices(k, mu, var1, P_der_1_v)
         derivative_matrices(k, mu, var2, P_der_2_v)
+        # tock = time.clock()
+        # print "Inverse and derivatives: %g sec" %(tock-tick)
 
-        # Optimized Cython trace:
-        for a in range(N_bins):
-            for b in range(N_bins):
-                for c in range(N_bins):
-                    for d in range(N_bins):
-                        trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell(a)*vol_shell(b)*vol_shell(c)*vol_shell(d)) )
+        # Numpy trace:
+        # tick = time.clock()
+        trace = np.dot(P_der_1, np.dot(inverse_C, np.dot(P_der_2,inverse_C))).trace()
+        # tock = time.clock()
+        # print "Numpy trace: %g sec --> %g" %(tock-tick, trace)
+
+        # # Optimized Cython trace: (optimized con cavolo...)
+        # inverse_C_v = inverse_matrix_C(k, mu)
+        # tick = time.clock()
+        # trace = 0
+        # for a in range(N_bins):
+        #     for b in range(N_bins):
+        #         for c in range(N_bins):
+        #             for d in range(N_bins):
+        #                 trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell(a)*vol_shell(b)*vol_shell(c)*vol_shell(d)) )
+        # tock = time.clock()
+        # print "Cython trace: %g sec --> %g" %(tock-tick,trace)
         return trace
     #
     # Without correlations there is no Trace to compute,
@@ -290,9 +312,12 @@ cdef double trace(double k, double mu, int var1, int var2):
                 bin = var2-N_cosm_vars # bin_bias
                 return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
             else:
+                # tick = time.clock()
                 result = 0.
                 for bin in range(N_bins):
                     result += vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
+                # tock = time.clock()
+                # print "Everything: %g sec" %(tock-tick)
                 return result
 
 
@@ -335,6 +360,7 @@ def trace_log_args(ks,**args):
 #                     if ( a==bin_kmax or b==bin_kmax or c==bin_kmax or d==bin_kmax ):
 #                         trace=trace + P_der_1_v[a,b]*inverse_C_v[b,c]*P_der_2_v[c,d]*inverse_C_v[d,a] * sqrt( sqrt( vol_shell_original(a)*vol_shell_original(b)*vol_shell_original(c)*vol_shell_original(d)) )
 #     return(trace)
+
 
 cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
     inverse_C_v = inverse_matrix_C(k, mu)

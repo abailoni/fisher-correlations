@@ -332,6 +332,8 @@ cdef:
     double[:,::1] N_v
 # Numpy matrices:
 C = np.zeros([N_bins, N_bins])
+sqrt_volume_shells = np.zeros([N_bins, N_bins])
+P_der_1, P_der_2 = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
 
 # Check AP numer. derivative:
 cdef:
@@ -461,11 +463,18 @@ def compute_survey_DATA():
     #global k_max_data
     #k_max_data = np.array([root_k_max(zx) for zx in z_avg])
 
-    # Correlation FM data:
-    global N_tot_vars
+    # Correlation matrices initialisation:
+    print " - correlation's matrices initialisation..."
+    global N_tot_vars, sqrt_volume_shells
     N_tot_vars = N_cosm_vars + N_bins
-    global P_der_1_v, P_der_2_v, N_v, C, C_v
-    P_der_1_v, P_der_2_v = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
+    for bin1 in range(N_bins):
+        for bin2 in range(bin1,N_bins):
+            sqrt_volume_shells[bin1,bin2] = sqrt(sqrt(vol_shell(bin1)*vol_shell(bin2)))
+            sqrt_volume_shells[bin2,bin1] = sqrt_volume_shells[bin1,bin2]
+
+    global P_der_1, P_der_1_v, P_der_2, P_der_2_v, N_v, C, C_v
+    P_der_1, P_der_2 = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
+    P_der_1_v, P_der_2_v = P_der_1, P_der_2
     inv_n_dens = 1./(n_dens*efficiency*1e-3)
     N_v = np.identity(N_bins) * inv_n_dens
     C = np.zeros([N_bins, N_bins])

@@ -28,7 +28,7 @@ import modules.cFM as cFM
 
 N_k = 3000
 k_vect = np.logspace(np.log10(1e-4),np.log10(1.),N_k)
-bin1, bin2 = 0, 13
+# bin1, bin2 = 0, 13
 
 cFM.init()
 spectrum, convSpec_1, convSpec_2, convSpec_3 = np.empty(N_k), np.empty(N_k), np.empty(N_k), np.empty(N_k)
