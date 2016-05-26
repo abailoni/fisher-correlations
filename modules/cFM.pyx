@@ -200,10 +200,7 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     # New with dlnP/dk
     cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
 
-
-    # Pay attention to lnH_der_data that are computed in z_avg....!!!
-    # cdef np.intp_t avg_bin = (bin1+bin2)/2
-    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term) + observed_spectrum(bin1, bin2, k, mu) * ( AP_term + lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + sqrt((lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1])*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2])) + beta_term  )
+    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term) + observed_spectrum(bin1, bin2, k, mu) * ( AP_term + lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
 
 
 # # Gamma: (optimized!) (var=6)
