@@ -4,6 +4,7 @@
 # - modified Trace that set k_max for the lower index (commented there is also the higher case)
 # - FFT used
 
+
 # Importing modules and defining default data:
 
 include "libraries/header.pxi"
@@ -14,20 +15,21 @@ include "libraries/CAMB.pxi"
 
 include "libraries/analytical_fcts.pxi"
 
-
-
-
 # It does all the first necessary things:
 def init():
     compute_CAMB_spectra()
-    import_zero_spectrum_der_k()
+    # import_zero_spectrum_der_k()
     compute_survey_DATA()
     store_int1()
+
+
 
 
 #---------------------------------------
 # COMPUTING INTEGRAL 1:
 #---------------------------------------
+
+
 
 def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     N_k = vect_k.shape[0]
@@ -49,20 +51,21 @@ def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
 
 
-def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
-    N_k = vect_k.shape[0]
-    R = vect_k[-1]
-    K_samples, P_samples = np.empty(N_k), np.empty(N_k)
-    for i in range(N_k):
-        K_samples[i] = K(vect_k[i],bin1,bin2)
-        if name_var=="spectrum":
-            P_samples[i] = 1.
-            # if vect_k[i]>=0. and vect_k[i]<0.2:
-            #     P_samples[i] = 1.
-            # else:
-            #     P_samples[i] = 0.
-    # Radial FFT:
-    return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
+# def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
+#     N_k = vect_k.shape[0]
+#     R = vect_k[-1]
+#     K_samples, P_samples = np.empty(N_k), np.empty(N_k)
+#     for i in range(N_k):
+#         K_samples[i] = K(vect_k[i],bin1,bin2)
+#         if name_var=="spectrum":
+#             P_samples[i] = 1.
+#             # if vect_k[i]>=0. and vect_k[i]<0.2:
+#             #     P_samples[i] = 1.
+#             # else:
+#             #     P_samples[i] = 0.
+#     # Radial FFT:
+#     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
+
 
 
 # Storing and interpolating int1 with GSL:
@@ -74,7 +77,7 @@ cdef:
     # interpolation_tools integral_DER[max_N_bins][max_N_bins]
 
 def store_int1():
-    print "Computing, storing and interpolating convolved spectra..."
+    print "\nComputing, storing and interpolating convolved spectra..."
     vect_k = np.linspace(0.0,1.4,7000)
     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
     start = time.time()
@@ -82,22 +85,22 @@ def store_int1():
         for bin2 in range(bin1,N_bins):
             for name_var in import_variables:
                 alloc_interp_GSL(vect_k, integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
-    print "Done! (%g sec.)" %(time.time()-start)
+    print "--> Done! (%g sec.)\n" %(time.time()-start)
 
-def store_int1_test():
-    print "Computing, storing and interpolating convolved spectra..."
-    vect_k = np.linspace(0.,1.4,7000)
-    # vect_k = np.arange(0.,0.401,1e-4)
-    import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
-    start = time.time()
-    for bin1 in range(N_bins):
-        for bin2 in range(bin1,N_bins):
-            for name_var in import_variables:
-                alloc_interp_GSL(vect_k, test_integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
-    print "Done! (%g sec.)" %(time.time()-start)
+# def store_int1_test():
+#     print "Computing, storing and interpolating convolved spectra..."
+#     vect_k = np.linspace(0.,1.4,7000)
+#     # vect_k = np.arange(0.,0.401,1e-4)
+#     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
+#     start = time.time()
+#     for bin1 in range(N_bins):
+#         for bin2 in range(bin1,N_bins):
+#             for name_var in import_variables:
+#                 alloc_interp_GSL(vect_k, test_integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
+#     print "Done! (%g sec.)" %(time.time()-start)
 
 #-----------------------------------------------
-# COMPUTING AP term: (simple way for the moment)
+# COMPUTING AP term: (simple way for the moment) ---> the only way
 #-----------------------------------------------
 # k-derivative of the convolved spectrum:
 cdef double conv_spectrum_der_k(double k, int bin1, int bin2):
@@ -108,6 +111,9 @@ cdef double spectrum_der_k(double k, int bin1, int bin2):
         return conv_spectrum_der_k(k,bin1,bin2)
     else:
         return zero_spectrum_der_k(k)
+
+def spectrum_der_k_py(k,bin1,bin2):
+    return spectrum_der_k(k,bin1,bin2)
 
 #**************************************************************
 #**************************************************************
@@ -127,6 +133,7 @@ cdef double windowed_zeroSpectrum(double k, int bin1, int bin2):
         return eval_interp_GSL(k, &integral_1_tools[bin2][bin1][0])
 
 
+
 cdef double windowed_numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
     if bin1<=bin2:
         return eval_interp_GSL(k, &integral_1_tools[bin1][bin2][var+1])
@@ -137,6 +144,9 @@ cdef double spectrum(double k, int bin1, int bin2):
     if "windowFun" in typeFM:
         return windowed_zeroSpectrum(k,bin1,bin2)
     else:
+        if "stramberia" in typeFM:
+            if bin1!=bin2:
+                return windowed_zeroSpectrum(k,bin1,bin2)
         return zero_spectrum(k)
 def spectrum_py(k,bin1,bin2):
     return spectrum(k,bin1,bin2)
@@ -147,8 +157,13 @@ cdef double numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3
     if "windowFun" in typeFM:
         return windowed_numerical_paramDER(k,bin1,bin2,var)
     else:
+        if "stramberia" in typeFM:
+            if bin1!=bin2:
+                return windowed_numerical_paramDER(k,bin1,bin2,var)
         return CAMB_numerical_paramDER(k,var+1)
 
+def numerical_paramDER_py(k,bin1,bin2,var):
+    return numerical_paramDER(k,bin1,bin2,var)
 
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
@@ -198,9 +213,9 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     # cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
 
     # New with dlnP/dk
-    cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
+    cdef double AP_k_term = check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num) if bin1==bin2 else 0.
 
-    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term) + observed_spectrum(bin1, bin2, k, mu) * ( AP_term + lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
+    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term) + observed_spectrum(bin1, bin2, k, mu) * ( AP_k_term + lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
 
 
 # # Gamma: (optimized!) (var=6)
@@ -214,15 +229,21 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 cdef double der_sigma8(int bin1, int bin2, double k, double mu):
     return 2*observed_spectrum(bin1, bin2, k, mu) /ref_values["sigma8"]
 
+
+cdef double bias_term(double mu, int bin):
+    return 1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * unfun_Ev(Om_m_z_data,z_avg[bin])**ref_values['gamma'] /(bias_bins[bin]**2)
+
+
 # Bias: (9 derivatives) (bad optimized....) (var>=6)
-cdef double der_bias(int bin1, int bin2, double k, double mu, int bin_bias) except -1:
-    bias_term = lambda bin: 1/bias_bins[bin] - 1./(1+beta_bins[bin]*mu**2)*mu**2 * fnEv(Om_m_z_py,z=z_avg[bin],w_1=ref_values['w_1'],w_0=ref_values['w_0'],Om_b=ref_values['Om_b'],Om_c=ref_values['Om_c'])**ref_values['gamma'] /(bias_bins[bin]**2)
+cdef double der_bias(int bin1, int bin2, double k, double mu, int bin_bias):
     if bin1==bin2 and bin1==bin_bias:
-        return observed_spectrum(bin1, bin2, k, mu) * 2*bias_term(bin_bias)
+        return observed_spectrum(bin1, bin2, k, mu) * 2*bias_term(mu,bin_bias)
     elif bin1==bin_bias or bin2==bin_bias:
-        return observed_spectrum(bin1, bin2, k, mu) * bias_term(bin_bias)
+        return observed_spectrum(bin1, bin2, k, mu) * bias_term(mu,bin_bias)
     else:
         return 0.
+
+
 
 #--------------------------------------------------------------
 # Constructing matrices and find the final Trace: (numpy+cython)
@@ -261,6 +282,7 @@ cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_
         for bin2 in range(bin1,stop_bin2):
             P_der_matrix[bin1,bin2]=DER(k,mu,var_num,bin1,bin2)
             P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
+
 
 # Compute Trace:
 cdef double trace(double k, double mu, int var1, int var2):
@@ -316,6 +338,7 @@ cdef double trace(double k, double mu, int var1, int var2):
                 # tock = time.clock()
                 # print "Everything: %g sec" %(tock-tick)
                 return result
+
 
 
 def trace_py(k,mu,var1,var2):
@@ -519,7 +542,7 @@ cdef:
     size_t MAX_ALLOC = max_alloc_const
     size_t MAX_ALLOC_K = max_alloc_const_K
     double rel_prec = 1e-3
-    double abs_prec = 1e-3
+    double abs_prec = 100
 cdef:
     gsl_integration_workspace * W_k
     gsl_integration_workspace * W_mu

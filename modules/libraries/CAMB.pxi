@@ -203,23 +203,23 @@ def zero_spectrum_py(k):
 #    return results
 
 
-# TEMP: ---------------------------------------
-# Import and interpolate cosmomathica derivative:
-cdef interpolation_tools derK_tools
-def import_zero_spectrum_der_k():
-    global derK_tools
-    print "Importing Cosmomathica derivative..."
-    data = np.loadtxt(open("INPUT/Santi/CAMB_derK_0.csv","rb"),delimiter="\t")
-    ln_ks, der_lnP = data[:,0].copy(order="C"), data[:,1].copy(order="C")
-    alloc_interp_GSL(ln_ks, der_lnP, &derK_tools)
-
-cdef double zero_spectrum_der_k(double k):
-    return eval_interp_GSL(log(k), &derK_tools)
-
-# ---------------------------------------------
+## TEMP: ---------------------------------------
+## Import and interpolate cosmomathica derivative:
+#cdef interpolation_tools derK_tools
+#def import_zero_spectrum_der_k():
+#    global derK_tools
+#    print "Importing Cosmomathica derivative..."
+#    data = np.loadtxt(open("INPUT/Santi/CAMB_derK_0.csv","rb"),delimiter="\t")
+#    ln_ks, der_lnP = data[:,0].copy(order="C"), data[:,1].copy(order="C")
+#    alloc_interp_GSL(ln_ks, der_lnP, &derK_tools)
 
 #cdef double zero_spectrum_der_k(double k):
-#    return zero_spectrum(k)/k * gsl_spline_eval_deriv(zero_spectrum_tools[0].spline, log(k), zero_spectrum_tools[0].acc)
+#    return eval_interp_GSL(log(k), &derK_tools)
+
+## ---------------------------------------------
+
+cdef double zero_spectrum_der_k(double k):
+    return zero_spectrum(k)/k * gsl_spline_eval_deriv(zero_spectrum_tools.spline, log(k), zero_spectrum_tools.acc)
 
 def zero_spectrum_der_k_py(k):
     return zero_spectrum_der_k(k)
