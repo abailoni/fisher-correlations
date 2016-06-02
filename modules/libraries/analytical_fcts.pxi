@@ -39,7 +39,7 @@ Hub_data = SymToLambda(Hub,numpy=True,**ref_values)
 #    return c_H0*NInt(1/Hub,z,0,zx, w_1=w_1, Om_b=Om_b, Om_c=Om_c, w_0=w_0)
 
 def Hubble(z,**cosmo_params):
-    return lambda_Ev(Hub_data,z,**cosmo_params)
+    return Lambda_Ev(Hub_data,z,**cosmo_params)
 
 # Comoving distance:
 def comov_dist(z,**cosmo_params):
@@ -72,20 +72,20 @@ def Growth(zx,**cosmo_params):
             cosmo_params[param] = ref_values[param]
     # Check if zx is an array:
     starting_point = 0. if not numpy_check(zx) else np.zeros(zx.shape)
-    return np.exp( NIntegrate(Om_m_z**gamma/(1+z), 'z', zx, starting_point, 1e-2, **cosmo_params))
+    return np.exp( NIntegrate(Om_m_z**gamma/(1+z), 'z', zx, starting_point, 1e-6, **cosmo_params))
 
 def beta(bins,**cosmo_params):
     """ bins can be a vector """
     if 'gamma' not in cosmo_params:
         cosmo_params['gamma']=ref_values['gamma']
-    return  lambda_Ev(Om_m_z_data,z_avg[bins],**cosmo_params)**cosmo_params['gamma'] / bias_bins_numpy[bins]
+    return  Lambda_Ev(Om_m_z_data,z_avg[bins],**cosmo_params)**cosmo_params['gamma'] / bias_bins_numpy[bins]
 
 # Just for test:
 def growth_rate_f(bin,**cosmo_params):
     """ The input 'bin' can be a vector """
     if 'gamma' not in cosmo_params:
         cosmo_params['gamma']=ref_values['gamma']
-    return lambda_Ev(Om_m_z_data,z_avg[bin],**cosmo_params)**cosmo_params['gamma']
+    return Lambda_Ev(Om_m_z_data,z_avg[bin],**cosmo_params)**cosmo_params['gamma']
 
 #--------------------------------------------------------------
 # Volume of a shell and top-hat function:
@@ -101,8 +101,22 @@ def vol_shell_py(bin):
 cdef double vol_shell_original(int bin):
     return 4*PI/3. * (-gsl_pow_3(com_zbin[bin]) + gsl_pow_3(com_zbin[bin+1]))
 
-def vol_shell_original_py(bin):
-    return vol_shell_original(bin)
+def vol_shell_original_py(bins):
+    """ The input 'bins' can be a vector """
+    if numpy_check(bins):
+        results = np.empty(bins.shape)
+        for i, bin in enumerate(bins):
+            results[i] = vol_shell_original(bin)
+        return results
+    else:
+        return vol_shell_original(bins)
+
+# Used for the numerical derivatives:
+def vol_spherical_shell(bins,**cosmo_params):
+    """ The input 'bins' can be a vector """
+    bins_indices = np.append(bins,[bins[-1]+1])
+    com_dists = comov_dist(z_in[bins_indices],**cosmo_params)
+    return 4*PI/3. * (-np.power(com_dists[:-1],3) + np.power(com_dists[1:],3))
 
 # Used only for an easier computation of W and K:
 cdef double vol_shell_mod(int bin):
@@ -180,7 +194,7 @@ def lnG_der(zx,var):
     starting_point = 0. if not numpy_check(zx) else np.zeros(zx.shape)
     return NIntegrate_fun(lnG_der_lamda[var], zx, starting_point,1e-6)
 def Beta_der(z,var):
-    return lambda_Ev(beta_der_Lambda_data[var],z)
+    return Lambda_Ev(beta_der_Lambda_data[var],z)
 
 
 # Derivatives of k and mu wrt ln(H) and ln(D):
@@ -206,7 +220,7 @@ for var in parameters_derivated:
 
 # Derivates of lnH and lnD wrt the four parameters: (analytical)
 def lnH_der(z,var):
-    return lambda_Ev(lnH_der_Lambda_data[var],z)
+    return Lambda_Ev(lnH_der_Lambda_data[var],z)
 # This is a mess...!!!
 def lnD_der(z,var):
     return 1./D_a(z) * 1./(1+z)*c_H0* (-1.) * quad(lambda zx: lnH_der(zx,var)/fnEv(Hub_py,z=zx,**ref_values),0,z,epsrel=INT_PREC)[0]
@@ -216,9 +230,9 @@ def lnD_der(z,var):
 def Fun_der_num(fun,z,var): # for G, H and D_a
     """ The input z can be a vector """
     return (fun(z,**{var: ref_values[var]+epsilon}) - fun(z,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
-def Beta_der_num(bin, var):
+def Fun_der_num_bins(fun,bin, var):
     """ The input bin can be a vector """
-    return (beta(bin,**{var: ref_values[var]+epsilon}) - beta(bin,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
+    return (fun(bin,**{var: ref_values[var]+epsilon}) - fun(bin,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
 
 # Derivative of mu wrt the four parameters: # num_var = [3-5] + gamma
 cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
@@ -339,8 +353,9 @@ cdef:
     double[:,::1] Beta_der_data # N_vars x N_bins
     double[:,::1] lnH_der_data # N_vars x N_bins
     double[:,::1] lnD_der_data # N_vars x N_bins
-    double[::1] lnH_der_0 # N_vars
-    double[::1] lnD_der_0 # N_vars
+    double[:,::1] lnVolShells_der_data # N_vars x N_bins
+    #double[::1] lnH_der_0 # N_vars
+    #double[::1] lnD_der_0 # N_vars
     double[::1] ref_val_v = np.empty(20) #for CLASS derivatives
     double[::1] k_max_data # N_bins
     double[::1] n_dens_c # N_bins
@@ -445,32 +460,29 @@ def compute_survey_DATA():
 
     # Derivatives and funtions:
     print " - derivatives..."
-    global lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data, Growth_bins, beta_bins, lnH_der_0, lnD_der_0
+    global lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data, Growth_bins, beta_bins, lnVolShells_der_data
     Growth_numpy = Growth(z_avg)
-    Growth_bins = Growth_numpy
-    beta_bins = beta(range(N_bins))
-    lnG_der_numpy, Beta_der_numpy, lnH_der_numpy, lnD_der_numpy = np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins])
-    #lnH_der_0, lnD_der_0 = np.zeros(N_vars), np.zeros(N_vars)
-    #parameters_derivated = ['Om_m', 'w_0', 'w_1', 'gamma']
+    Growth_bins = Growth_numpy # Cython memoryview
+    beta_bins = beta(np.arange(N_bins))
+    lnG_der_numpy, Beta_der_numpy, lnH_der_numpy, lnD_der_numpy, lnVolShells_der_numpy = np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins]), np.zeros([N_vars,N_bins])
+
     parameters_derivated = ['Om_b','Om_c', 'w_0']
     for var in parameters_derivated: # num_var = [2-4]
         # NUMERICAL:
-        #Beta_der_numpy[n_var[var],:] = Beta_der_num(range(N_bins),var)
+        #Beta_der_numpy[n_var[var],:] = Fun_der_num_bins(beta,range(N_bins),var)
         #lnG_der_numpy[n_var[var],:] = Fun_der_num(Growth,z_avg,var) / Growth_numpy
         #lnH_der_numpy[n_var[var],:] = Fun_der_num(Hubble,z_avg,var) /Hubble(z_avg)
         lnD_der_numpy[n_var[var],:] = Fun_der_num(D_a,z_avg,var) / D_a(z_avg)
+        lnVolShells_der_numpy[n_var[var],:] = Fun_der_num_bins(vol_spherical_shell,np.arange(N_bins),var) / vol_shell_original_py(np.arange(N_bins))
 
         # ANALYTICAL:
         lnG_der_numpy[n_var[var],:] = lnG_der(z_avg,var)
         Beta_der_numpy[n_var[var],:] = 1./bias_bins_numpy * Beta_der(z_avg,var)
         lnH_der_numpy[n_var[var],:] = lnH_der(z_avg,var)
         #lnD_der_numpy[n_var[var],:] = lnD_der(z_avg,var)
-    lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data = lnG_der_numpy, Beta_der_numpy, lnH_der_numpy, lnD_der_numpy
 
-        ## At redshift z=0:
-        #lnH_der_0[n_var[var]] = lnH_der[var](0.)
-        #lnD_der_0[n_var[var]] = lnD_der[var](0.)
-        #print lnH_der_0[n_var[var]], lnD_der_0[n_var[var]]
+    # Save faster cython memoryvies:
+    lnG_der_data, Beta_der_data, lnH_der_data, lnD_der_data, lnVolShells_der_data = lnG_der_numpy, Beta_der_numpy, lnH_der_numpy, lnD_der_numpy, lnVolShells_der_numpy
 
     # Other data: (for CLASS derivatives)
     ref_values_arr = [0, ref_values['h'], ref_values['n_s'], ref_values['Om_b'], ref_values['Om_c'], ref_values['w_0'], ref_values['w_1']]

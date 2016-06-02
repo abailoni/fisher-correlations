@@ -198,7 +198,7 @@ def SymToLambda(expression,**args):
 # Evaluation:
 # The arguments are used only if it is necessary to change some default data (slow). Not necessary arguments are ignored.
 # inputs are the ordered mandatory inputs (they can be numpy arrays).
-def lambda_Ev(SymToLambda_data,*inputs,**kargs):
+def Lambda_Ev(SymToLambda_data,*inputs,**kargs):
     # Change eventual default data:
     defValues = list(SymToLambda_data[3])
     if len(kargs)!=0:

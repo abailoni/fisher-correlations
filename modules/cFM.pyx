@@ -636,6 +636,7 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=False, t
 #  - correlations+windowFun (default)
 #
 
+
 def FM(int check_AP=0, FMname="test", interp_Tr=False, type_FM_input="correlations+windowFun", fixed_kmax=0.2):
     FM = np.zeros([N_tot_vars,N_tot_vars])
     for var1 in range(N_tot_vars):
@@ -647,6 +648,7 @@ def FM(int check_AP=0, FMname="test", interp_Tr=False, type_FM_input="correlatio
             np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
             print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
     return FM
+
 
 
 def set_typeFM(type_FM_input):
