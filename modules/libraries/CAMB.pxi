@@ -180,10 +180,20 @@ def print_s8(var):
 
 # ZERO SPECTRUM:
 cdef double zero_spectrum(double k):
-    return exp(eval_interp_GSL(log(k), &zero_spectrum_tools))
+    if k==0.:
+        return 0.
+    else:
+        return exp(eval_interp_GSL(log(k), &zero_spectrum_tools))
 
 def zero_spectrum_py(k):
-    return zero_spectrum(k)
+    if numpy_check(k):
+        results = np.empty(k.shape)
+        for i, kval in enumerate(k):
+            results[i] = zero_spectrum(kval)
+        return results
+    else:
+        return zero_spectrum(k)
+
 #def zero_spectrum_FFT_3D(mod_k):
 #    cdef int shape = mod_k.shape[0]
 #    results = np.empty((shape,shape,shape))
@@ -222,10 +232,25 @@ cdef double zero_spectrum_der_k(double k):
     return zero_spectrum(k)/k * gsl_spline_eval_deriv(zero_spectrum_tools.spline, log(k), zero_spectrum_tools.acc)
 
 def zero_spectrum_der_k_py(k):
-    return zero_spectrum_der_k(k)
+    if numpy_check(k):
+        results = np.empty(k.shape)
+        for i, kval in enumerate(k):
+            results[i] = zero_spectrum_der_k(kval)
+        return results
+    else:
+        return zero_spectrum_der_k(k)
 
 
 cdef double CAMB_numerical_paramDER(double k, int num_var): # Var goes from 1 to 4
-    return (exp(eval_interp_GSL(log(k), &derivatives_tools[num_var])) - zero_spectrum(k)) / (ref_val_v[num_var])
+    if k==0.:
+        return 0.
+    else:
+        return (exp(eval_interp_GSL(log(k), &derivatives_tools[num_var])) - zero_spectrum(k)) / (ref_val_v[num_var])
 def CAMB_numerical_paramDER_py(k,num_var):
-    return CLASS_der(k,num_var)
+    if numpy_check(k):
+        results = np.empty(k.shape)
+        for i, kval in enumerate(k):
+            results[i] = CAMB_numerical_paramDER(kval,num_var)
+        return results
+    else:
+        return CAMB_numerical_paramDER(k,num_var)

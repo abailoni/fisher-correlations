@@ -195,9 +195,11 @@ def SymToLambda(expression,**args):
         return [sym.lambdify(varExpr(expression), expression,*numpy_option), required_vars]
 
 
+
 # Evaluation:
 # The arguments are used only if it is necessary to change some default data (slow). Not necessary arguments are ignored.
 # inputs are the ordered mandatory inputs (they can be numpy arrays).
+# Now also matrices are supported, so the kargs can be arrays of parameters
 def Lambda_Ev(SymToLambda_data,*inputs,**kargs):
     # Change eventual default data:
     defValues = list(SymToLambda_data[3])
@@ -208,7 +210,11 @@ def Lambda_Ev(SymToLambda_data,*inputs,**kargs):
     # With numpy arrays Vectorize default inputs:
     if numpy_check(inputs[0]):
         if len(defValues)!=0:
-            defValues = [np.ones(inputs[0].shape)*value for value in defValues]
+            # Check if kargs are also arrays:
+            if numpy_check(defValues[0]):
+                defValues = [np.ones(inputs[0].shape)*np.reshape(value,(-1,1)) for value in defValues]
+            else:
+                defValues = [np.ones(inputs[0].shape)*value for value in defValues]
     return SymToLambda_data[0](*inputs+tuple(defValues))
 
 

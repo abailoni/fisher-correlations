@@ -25,10 +25,66 @@ def init():
 
 
 
+
+
+
+
 #---------------------------------------
 # COMPUTING INTEGRAL 1:
 #---------------------------------------
 
+# Compute at once all the correlations using numpy:
+def FFTconvoloved_spectra(name_var,vect_k = np.linspace(0.0,0.5,10000)):
+    N_k = vect_k.shape[0]
+    R = vect_k[-1]
+    K_samples, P_samples, Kder_samples, Pder_samples = np.empty(N_k), np.empty(N_k), np.empty(N_k), np.empty(N_k)
+
+    # Construct all bin pairs: (not so pythonic...)
+    count=0
+    bin_pairs = np.zeros((2, N_bins*(N_bins+1)/2), dtype=np.int)
+    for bin1 in range(N_bins):
+        for bin2 in range(bin1,N_bins):
+            bin_pairs[0,count], bin_pairs[1,count] = bin1, bin2
+            count+=1
+
+
+    # Compute K, P, derP and derK:
+    K_samples = K_FFTconvolution(bin_pairs,vect_k)
+    P_samples = np.tile(zero_spectrum_py(vect_k), (bin_pairs.shape[1],1))
+    if name_var!="spectrum":
+        # The best would be to use the num. derivative
+        Pder_samples = np.tile(CAMB_numerical_paramDER_py(vect_k, n_var_import[name_var]) , (bin_pairs.shape[1],1))
+        Kder_samples = (K_FFTconvolution(bin_pairs,vect_k,**{name_var: ref_values[name_var]+epsilon}) - K_FFTconvolution(bin_pairs,vect_k,**{name_var: ref_values[name_var]-epsilon}) ) / (2*epsilon)
+
+    # Radial convolutions:
+    if name_var=="spectrum":
+        return FFTt.radial_convolution(P_samples,K_samples,R), 0.
+    else:
+        fft1 = FFTt.radial_convolution(Pder_samples,K_samples,R)
+        fft2 = FFTt.radial_convolution(P_samples,Kder_samples,R)
+        return fft1, fft2
+
+def store_conv_spectra():
+    print "\nComputing, storing and interpolating convolved spectra..."
+    vect_k = np.linspace(0.0,1.4,7000)
+    import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
+
+    # Convolve:
+    start = time.clock()
+    fft1, fft2 = {}, {}
+    for name_var in import_variables:
+        fft1[name_var], fft2[name_var] = FFTconvoloved_spectra(name_var, vect_k)
+
+    # Interpolate:
+    count=0
+    for bin1 in range(N_bins):
+        for bin2 in range(bin1,N_bins):
+            for name_var in import_variables:
+                alloc_interp_GSL(vect_k, fft1[name_var][count,:], &integral_1_NEW_tools[bin1][bin2][n_var_import[name_var]])
+                if name_var!="spectrum":
+                    alloc_interp_GSL(vect_k, fft2[name_var][count,:], &integral_2_NEW_tools[bin1][bin2][n_var_import[name_var]])
+            count+=1
+    print "--> Done! (%g sec.)\n" %(time.clock()-start)
 
 
 def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
@@ -67,25 +123,28 @@ def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
 #     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
 
 
-
 # Storing and interpolating int1 with GSL:
 cdef enum:
     max_N_bins = 50
 
 cdef:
     interpolation_tools integral_1_tools[max_N_bins][max_N_bins][N_vars]
+    interpolation_tools integral_1_NEW_tools[max_N_bins][max_N_bins][N_vars]
+    interpolation_tools integral_2_NEW_tools[max_N_bins][max_N_bins][N_vars]
     # interpolation_tools integral_DER[max_N_bins][max_N_bins]
+
+
 
 def store_int1():
     print "\nComputing, storing and interpolating convolved spectra..."
     vect_k = np.linspace(0.0,1.4,7000)
     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
-    start = time.time()
+    start = time.clock()
     for bin1 in range(N_bins):
         for bin2 in range(bin1,N_bins):
             for name_var in import_variables:
                 alloc_interp_GSL(vect_k, integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
-    print "--> Done! (%g sec.)\n" %(time.time()-start)
+    print "--> Done! (%g sec.)\n" %(time.clock()-start)
 
 # def store_int1_test():
 #     print "Computing, storing and interpolating convolved spectra..."
@@ -132,7 +191,17 @@ cdef double windowed_zeroSpectrum(double k, int bin1, int bin2):
     else:
         return eval_interp_GSL(k, &integral_1_tools[bin2][bin1][0])
 
+def windowed_zeroSpectrum_NEW(double k, int bin1, int bin2):
+    if bin1<=bin2: #should not be necessary, but...
+        return eval_interp_GSL(k, &integral_1_NEW_tools[bin1][bin2][0])
+    else:
+        return eval_interp_GSL(k, &integral_1_NEW_tools[bin2][bin1][0])
 
+def der_param_R_vol(double k, int bin1, int bin2, int var): #var [0-3]
+    if bin1<=bin2: #should not be necessary, but...
+        return eval_interp_GSL(k, &integral_2_NEW_tools[bin1][bin2][var+1])
+    else:
+        return eval_interp_GSL(k, &integral_2_NEW_tools[bin2][bin1][var1])
 
 cdef double windowed_numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
     if bin1<=bin2:

@@ -124,8 +124,10 @@ cdef double vol_shell_mod(int bin):
 
 # Fourier transform of the top-hat function:
 r, k, kp, r1, r2, r3, r4 = sym.symbols('r k kp r1 r2 r3 r4')
-W_integral = sym.integrate( sym.sin(r*k)* r**2 / (k*r), (r,r1,r2)  ) #[k, r1, r2]
-fun_W_integral = fnExpr(W_integral) #[k, r1, r2] --> bad optimized, not used
+W_integral = sym.integrate( sym.sin(r*k)* r**2 / (k*r), (r,r1,r2)  )
+
+# Lambdify optimized to be used in a vectorized way. See K_FFTconvolution()
+W_integral_data = SymToLambda(W_integral,numpy=True,order_vars=['k'],r1=1.,r2=1.)
 
 cdef double W_compiled(double mod_k, int bin):
     cdef double r1=com_zbin[bin], r2=com_zbin[bin+1]
@@ -134,6 +136,40 @@ cdef double W_compiled(double mod_k, int bin):
     else:
         print "Warning: W_fourier(k) computed at k=0"
         return vol_shell_mod(bin)
+
+
+# bin_pairs is a matrix of dim (2, N_pairs)
+# One column of 'allPairs_comDist' contains (R_i, R_j, R_i+1, R_j+1). Every colum represent a bin_pair (i,j). Same for 'allPairs_comVol' but there just (i,j).
+# All the constants are already included. CHANGE OTHER FUNCTIONS!!!!! --> integral_1
+# Results is of the shape (N_pairs, N_k)
+
+def K_FFTconvolution(bin_pairs, mods_k, **cosmo_params):
+
+    # Compute comov. distances and volumes:
+    bins = np.arange(bin_pairs.min(),bin_pairs.max()+1)
+    com_distances = comov_dist(np.concatenate((bins,[bins[-1]+1])),**cosmo_params)
+    com_volumes = vol_spherical_shell(bins,**cosmo_params)
+    # For each pair:
+    allPairs_bins = np.row_stack((bin_pairs, bin_pairs+1))
+    allPairs_comDist, allPairs_comVol = com_distances[allPairs_bins], com_volumes[bin_pairs]
+
+    # Check for zero mods_k:
+    idxs_k, idxs_bins = (mods_k!=0).nonzero(), np.arange(bin_pairs.shape[1])
+    idxMat_k, idxMat_bin = np.meshgrid(idxs_k,idxs_bins)
+
+    # Compute K(mods_k) for each pair:
+    allPairs_mods_k = np.tile(mods_k, (bin_pairs.shape[1],1))
+    result_matrix = Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[0], r2=allPairs_comDist[2]) * Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[1], r2=allPairs_comDist[3])
+    results = (2./ (PI*np.sqrt(np.prod(allPairs_comVol,axis=0))) * result_matrix.T).T
+
+    # Adjust zero mods_k:
+    idxs_zerok = tuple((mods_k==0).nonzero()[0])
+    results = np.insert(results.T, idxs_zerok, np.sqrt(np.prod(allPairs_comVol,axis=0)) / gsl_pow_3(2*PI), axis=0).T
+
+    return results
+
+
+
 
 #cdef double W(double k_modulus, int bin):
 #    return 1./vol_shell_mod(bin)*W_compiled(k_modulus, com_zbin[bin],com_zbin[bin+1])
