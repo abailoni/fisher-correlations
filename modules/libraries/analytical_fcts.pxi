@@ -114,7 +114,9 @@ def vol_shell_original_py(bins):
 # Used for the numerical derivatives:
 def vol_spherical_shell(bins,**cosmo_params):
     """ The input 'bins' can be a vector """
-    bins_indices = np.append(bins,[bins[-1]+1])
+    if not numpy_check(bins):
+        bins = np.array([bins])
+    bins_indices = np.append(bins,[bins.max()+1])
     com_dists = comov_dist(z_in[bins_indices],**cosmo_params)
     return 4*PI/3. * (-np.power(com_dists[:-1],3) + np.power(com_dists[1:],3))
 
@@ -160,11 +162,12 @@ def K_FFTconvolution(bin_pairs, mods_k, **cosmo_params):
     # Compute K(mods_k) for each pair:
     allPairs_mods_k = np.tile(mods_k, (bin_pairs.shape[1],1))
     result_matrix = Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[0], r2=allPairs_comDist[2]) * Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[1], r2=allPairs_comDist[3])
-    results = (2./ (PI*np.sqrt(np.prod(allPairs_comVol,axis=0))) * result_matrix.T).T
+    #results = (2./ (PI*np.sqrt(np.prod(allPairs_comVol,axis=0))) * result_matrix.T).T
+    results = ( (4*PI)*(4*PI) / np.prod(allPairs_comVol,axis=0) * result_matrix.T).T
 
     # Adjust zero mods_k:
     idxs_zerok = tuple((mods_k==0).nonzero()[0])
-    results = np.insert(results.T, idxs_zerok, np.sqrt(np.prod(allPairs_comVol,axis=0)) / gsl_pow_3(2*PI), axis=0).T
+    results = np.insert(results.T, idxs_zerok, 1., axis=0).T
 
     return results
 
@@ -366,6 +369,40 @@ def density_py(z): # EUCLID-2012
     z_avg = np.array([0.65, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5])
     n_dens = np.array([0.95 ,1.25, 1.92, 1.83, 1.68, 1.51, 1.35, 1.20, 1.00, 0.80, 0.58, 0.38, 0.35, 0.21, 0.11, 0.05])
     return interp1d(z_avg,n_dens,kind="slinear")(z)
+
+# IMPROVED VERSION: it doesn't just interpolate at z_avg, but with the z_in vector as input it does an average in the bin:
+def bias_advanced_py(z_in):
+    # Interpolation:
+    z_avg_default = np.array([0.65, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5])
+    bias_bins_default = np.array([1.05, 1.083, 1.125, 1.104, 1.126, 1.208, 1.243, 1.282, 1.292, 1.363, 1.497, 1.486, 1.491, 1.573, 1.568, 1.58,])
+    interpolation = interp1d(z_avg_default,bias_bins_default,kind="slinear")
+
+    # Average values:
+    N_samples = 100
+    z_samples = np.linspace(0.65,2.05,N_samples)
+    bias_samples = interpolation(z_samples)
+    results = np.empty(z_in.shape[0]-1)
+    for i, z_stop in enumerate(z_in[1:]):
+        indxs = np.logical_and(z_samples>=z_in[i], z_samples<=z_stop).nonzero()
+        results[i] = np.average(bias_samples[indxs])
+    return results
+
+
+def density_advanced_py(z_in): # EUCLID-2012
+    # Interpolation:
+    z_avg_default = np.array([0.65, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5])
+    n_dens_default = np.array([0.95 ,1.25, 1.92, 1.83, 1.68, 1.51, 1.35, 1.20, 1.00, 0.80, 0.58, 0.38, 0.35, 0.21, 0.11, 0.05])
+    interpolation = interp1d(z_avg_default,n_dens_default,kind="slinear")
+
+    # Average values:
+    N_samples = 100
+    z_samples = np.linspace(0.65,2.05,N_samples)
+    nDens_samples = interpolation(z_samples)
+    results = np.empty(z_in.shape[0]-1)
+    for i, z_stop in enumerate(z_in[1:]):
+        indxs = np.logical_and(z_samples>=z_in[i], z_samples<=z_stop).nonzero()
+        results[i] = np.average(nDens_samples[indxs])
+    return results
 
 
 #**************************************************************

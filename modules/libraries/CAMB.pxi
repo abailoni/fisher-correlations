@@ -180,7 +180,7 @@ def print_s8(var):
 
 # ZERO SPECTRUM:
 cdef double zero_spectrum(double k):
-    if k==0.:
+    if k<k_min:
         return 0.
     else:
         return exp(eval_interp_GSL(log(k), &zero_spectrum_tools))
@@ -229,6 +229,8 @@ def zero_spectrum_py(k):
 ## ---------------------------------------------
 
 cdef double zero_spectrum_der_k(double k):
+    if k<k_min:
+        k=k_min
     return zero_spectrum(k)/k * gsl_spline_eval_deriv(zero_spectrum_tools.spline, log(k), zero_spectrum_tools.acc)
 
 def zero_spectrum_der_k_py(k):
@@ -242,7 +244,7 @@ def zero_spectrum_der_k_py(k):
 
 
 cdef double CAMB_numerical_paramDER(double k, int num_var): # Var goes from 1 to 4
-    if k==0.:
+    if k<k_min:
         return 0.
     else:
         return (exp(eval_interp_GSL(log(k), &derivatives_tools[num_var])) - zero_spectrum(k)) / (ref_val_v[num_var])

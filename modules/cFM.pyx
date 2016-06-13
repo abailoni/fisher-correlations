@@ -5,6 +5,9 @@
 # - FFT used
 
 
+
+
+
 # Importing modules and defining default data:
 
 include "libraries/header.pxi"
@@ -21,9 +24,6 @@ def init():
     # import_zero_spectrum_der_k()
     compute_survey_DATA()
     store_int1()
-
-
-
 
 
 
@@ -107,20 +107,19 @@ def integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
 
 
-# def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
-#     N_k = vect_k.shape[0]
-#     R = vect_k[-1]
-#     K_samples, P_samples = np.empty(N_k), np.empty(N_k)
-#     for i in range(N_k):
-#         K_samples[i] = K(vect_k[i],bin1,bin2)
-#         if name_var=="spectrum":
-#             P_samples[i] = 1.
-#             # if vect_k[i]>=0. and vect_k[i]<0.2:
-#             #     P_samples[i] = 1.
-#             # else:
-#             #     P_samples[i] = 0.
-#     # Radial FFT:
-#     return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
+def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
+    N_k = vect_k.shape[0]
+    R = vect_k[-1]
+    K_samples, P_samples = np.empty(N_k), np.empty(N_k)
+    for i in range(N_k):
+        K_samples[i] = K(vect_k[i],bin1,bin2)
+        if name_var=="spectrum":
+            if vect_k[i]>=0.05 and vect_k[i]<0.2:
+                P_samples[i] = 1e4
+            else:
+                P_samples[i] = 0.
+    # Radial FFT:
+    return np.sqrt(vol_shell_original(bin1)*vol_shell_original(bin2))/(2*np.pi)**3 *FFTt.radial_convolution(P_samples,K_samples,R)
 
 
 # Storing and interpolating int1 with GSL:
@@ -146,17 +145,17 @@ def store_int1():
                 alloc_interp_GSL(vect_k, integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
     print "--> Done! (%g sec.)\n" %(time.clock()-start)
 
-# def store_int1_test():
-#     print "Computing, storing and interpolating convolved spectra..."
-#     vect_k = np.linspace(0.,1.4,7000)
-#     # vect_k = np.arange(0.,0.401,1e-4)
-#     import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
-#     start = time.time()
-#     for bin1 in range(N_bins):
-#         for bin2 in range(bin1,N_bins):
-#             for name_var in import_variables:
-#                 alloc_interp_GSL(vect_k, test_integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
-#     print "Done! (%g sec.)" %(time.time()-start)
+def store_int1_test():
+    print "Computing, storing and interpolating convolved spectra..."
+    vect_k = np.linspace(0.,1.4,7000)
+    # vect_k = np.arange(0.,0.401,1e-4)
+    import_variables = ["spectrum","h","n_s","Om_b","Om_c"]
+    start = time.time()
+    for bin1 in range(N_bins):
+        for bin2 in range(bin1,N_bins):
+            for name_var in import_variables:
+                alloc_interp_GSL(vect_k, test_integral_1(bin1,bin2,name_var,vect_k), &integral_1_tools[bin1][bin2][n_var_import[name_var]])
+    print "Done! (%g sec.)" %(time.time()-start)
 
 #-----------------------------------------------
 # COMPUTING AP term: (simple way for the moment) ---> the only way
@@ -186,28 +185,55 @@ def spectrum_der_k_py(k,bin1,bin2):
 # Reconstruct spectrum and integrals A and B:
 #----------------------------------------------
 cdef double windowed_zeroSpectrum(double k, int bin1, int bin2):
+    if k<k_min:
+        k=k_min
     if bin1<=bin2: #should not be necessary, but...
         return eval_interp_GSL(k, &integral_1_tools[bin1][bin2][0])
     else:
         return eval_interp_GSL(k, &integral_1_tools[bin2][bin1][0])
+def windowed_zeroSpectrum_py(k,bin1,bin2):
+    """ Vectorized """
+    if numpy_check(k):
+        results = np.empty(k.shape)
+        for i, kval in enumerate(k):
+            results[i] = windowed_zeroSpectrum(kval,bin1,bin2)
+        return results
+    else:
+        return windowed_zeroSpectrum(k,bin1,bin2)
 
 def windowed_zeroSpectrum_NEW(double k, int bin1, int bin2):
+    if k<k_min:
+        k=k_min
     if bin1<=bin2: #should not be necessary, but...
         return eval_interp_GSL(k, &integral_1_NEW_tools[bin1][bin2][0])
     else:
         return eval_interp_GSL(k, &integral_1_NEW_tools[bin2][bin1][0])
 
 def der_param_R_vol(double k, int bin1, int bin2, int var): #var [0-3]
+    if k<k_min:
+        k=k_min
     if bin1<=bin2: #should not be necessary, but...
         return eval_interp_GSL(k, &integral_2_NEW_tools[bin1][bin2][var+1])
     else:
         return eval_interp_GSL(k, &integral_2_NEW_tools[bin2][bin1][var1])
 
 cdef double windowed_numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
+    if k<k_min:
+        k=k_min
     if bin1<=bin2:
         return eval_interp_GSL(k, &integral_1_tools[bin1][bin2][var+1])
     else:
         return eval_interp_GSL(k, &integral_1_tools[bin2][bin1][var+1])
+
+def windowed_numerical_paramDER_py(k,bin1,bin2,var):
+    """ Vectorized """
+    if numpy_check(k):
+        results = np.empty(k.shape)
+        for i, kval in enumerate(k):
+            results[i] = windowed_numerical_paramDER(kval,bin1,bin2,var)
+        return results
+    else:
+        return windowed_numerical_paramDER(k,bin1,bin2,var)
 
 cdef double spectrum(double k, int bin1, int bin2):
     if "windowFun" in typeFM:
@@ -217,8 +243,17 @@ cdef double spectrum(double k, int bin1, int bin2):
             if bin1!=bin2:
                 return windowed_zeroSpectrum(k,bin1,bin2)
         return zero_spectrum(k)
+
+# THIS REPETITION OF CODE IS AWFUL....
 def spectrum_py(k,bin1,bin2):
-    return spectrum(k,bin1,bin2)
+    """ Vectorized """
+    if "windowFun" in typeFM:
+        return windowed_zeroSpectrum_py(k,bin1,bin2)
+    else:
+        if "stramberia" in typeFM:
+            if bin1!=bin2:
+                return windowed_zeroSpectrum_py(k,bin1,bin2)
+        return zero_spectrum_py(k)
 
 
 
@@ -232,8 +267,14 @@ cdef double numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3
         return CAMB_numerical_paramDER(k,var+1)
 
 def numerical_paramDER_py(k,bin1,bin2,var):
-    return numerical_paramDER(k,bin1,bin2,var)
-
+    """ Vectorized """
+    if "windowFun" in typeFM:
+        return windowed_numerical_paramDER_py(k,bin1,bin2,var)
+    else:
+        if "stramberia" in typeFM:
+            if bin1!=bin2:
+                return windowed_numerical_paramDER_py(k,bin1,bin2,var)
+        return CAMB_numerical_paramDER_py(k,var+1)
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
 #--------------------------------------------------------------
@@ -242,12 +283,14 @@ cdef double observed_spectrum(int bin1, int bin2, double k, double mu):
     return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum(k,bin1,bin2)
 
 def observed_spectrum_py(bin1,bin2,k,mu):
-    return observed_spectrum(bin1,bin2,k,mu)
+    """ Vectorized """
+    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum_py(k,bin1,bin2)
 
 def growth_spectrum_py(bin1,bin2,k,typeFM_input):
+    """ Vectorized """
     global typeFM
     typeFM = typeFM_input
-    return Growth_bins[bin1]*Growth_bins[bin2] * spectrum(k,bin1,bin2)
+    return Growth_bins[bin1]*Growth_bins[bin2] * spectrum_py(k,bin1,bin2)
 
 # Observed terms: (optimized!)
 # to avoid division by zero given by windowed_Spectrum with i!=j
@@ -323,7 +366,8 @@ cdef double der_bias(int bin1, int bin2, double k, double mu, int bin_bias):
 def inverse_matrix_C(double k, double mu):
     cdef np.intp_t bin1, bin2
     for bin1 in range(N_bins):
-        for bin2 in range(bin1,N_bins):
+        stop_bin2  = bin1+CORR_BINS+1 if bin1+CORR_BINS+1<N_bins else N_bins
+        for bin2 in range(bin1,stop_bin2):
             C_v[bin1,bin2]= observed_spectrum(bin1, bin2, k, mu) + N_v[bin1,bin2]
             C_v[bin2,bin1]=C_v[bin1,bin2]
     return(np.linalg.inv(C))
@@ -340,15 +384,15 @@ cdef double DER(double k, double mu, int var_num, int bin1, int bin2):
         bin_bias = var_num-N_cosm_vars
         return der_bias(bin1,bin2,k,mu,bin_bias)
 
-CORR_BINS = N_bins
-
 
 # Compute matrix of derivatives: (var_num from 0 to 7+N_bins-1)
 cdef void derivative_matrices(double k, double mu, int var_num, double[:,::1] P_der_matrix):
+    # P_der_matrix = np.zeros((N_bins,N_bins))
     cdef np.intp_t bin1, bin2
     for bin1 in range(N_bins):
         stop_bin2  = bin1+CORR_BINS+1 if bin1+CORR_BINS+1<N_bins else N_bins
         for bin2 in range(bin1,stop_bin2):
+            # print bin1, bin2
             P_der_matrix[bin1,bin2]=DER(k,mu,var_num,bin1,bin2)
             P_der_matrix[bin2,bin1]=P_der_matrix[bin1,bin2]
 
@@ -360,6 +404,7 @@ cdef double trace(double k, double mu, int var1, int var2):
     if "correlations" in typeFM:
         # tick = time.clock()
         inverse_C = inverse_matrix_C(k, mu) * sqrt_volume_shells
+        # inverse_C = inverse_matrix_C(k, mu)
         derivative_matrices(k, mu, var1, P_der_1_v)
         derivative_matrices(k, mu, var2, P_der_2_v)
         # tock = time.clock()
@@ -395,14 +440,17 @@ cdef double trace(double k, double mu, int var1, int var2):
             # Optimise the sum over bins:
             if var1>N_cosm_vars:
                 bin = var1-N_cosm_vars # bin_bias
+                # return DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
                 return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
             elif var2>N_cosm_vars:
                 bin = var2-N_cosm_vars # bin_bias
+                # return  DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
                 return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
             else:
                 # tick = time.clock()
                 result = 0.
                 for bin in range(N_bins):
+                    # result += DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
                     result += vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
                 # tock = time.clock()
                 # print "Everything: %g sec" %(tock-tick)
@@ -610,8 +658,10 @@ cdef enum:
 cdef:
     size_t MAX_ALLOC = max_alloc_const
     size_t MAX_ALLOC_K = max_alloc_const_K
-    double rel_prec = 1e-3
+    double rel_prec = 1e-2
     double abs_prec = 100
+    # double rel_prec = 1e-6
+    # double abs_prec = 1e-6
 cdef:
     gsl_integration_workspace * W_k
     gsl_integration_workspace * W_mu
@@ -655,15 +705,16 @@ interpolate_Trace = False
 # typeFM = "correlations+windowFun"
 typeFM = "uncorr"
 
-k_min_hard = 0.001
+k_min_hard = 5e-3
 k_max_hard = 0.5
-def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=False, type_FM_input="correlations+windowFun", double fixed_kmax=0.2):
+def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="uncorr", N_bins_correlations = N_bins, double fixed_kmax=0.2):
     global AP_flag, mode_kmax
     AP_flag=check_AP
     mode_kmax = fixed_kmax
 
-    global interpolate_Trace, typeFM
-    interpolate_Trace = interp_Tr
+    global typeFM, CORR_BINS
+    # interpolate_Trace = interp_Tr
+    CORR_BINS = N_bins_correlations
     typeFM = type_FM_input
     # BEST SOLUTION: interpolate Trace before and only check if it's there!
     # if interpolate_Trace:
@@ -706,16 +757,27 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, interp_Tr=False, t
 #
 
 
-def FM(int check_AP=0, FMname="test", interp_Tr=False, type_FM_input="correlations+windowFun", fixed_kmax=0.2):
+def FM(check_AP=0, FMname="test", type_FM_input="correlations+windowFun", N_bins_correlations = N_bins, fixed_kmax=0.2):
+
+    print "\nComputing Fisher matrix..."
     FM = np.zeros([N_tot_vars,N_tot_vars])
+
+    # Resetting matrices:
+    global P_der_1, P_der_1_v, P_der_2, P_der_2_v, C, C_v
+    P_der_1, P_der_2 = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
+    P_der_1_v, P_der_2_v = P_der_1, P_der_2
+    C = np.zeros([N_bins, N_bins])
+    C_v = C
+
+    # Computing:
     for var1 in range(N_tot_vars):
         for var2 in range(var1,N_tot_vars):
-            start = time.clock()
-            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,interp_Tr,type_FM_input,fixed_kmax)
-            stop = time.clock()
+            # start = time.clock()
+            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
+            # stop = time.clock()
             FM[var2,var1]=FM[var1,var2]
             np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
-            print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
+            # print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
     return FM
 
 
