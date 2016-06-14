@@ -139,6 +139,11 @@ cdef double W_compiled(double mod_k, int bin):
         print "Warning: W_fourier(k) computed at k=0"
         return vol_shell_mod(bin)
 
+def W_py(mod_k,bin):
+    return W_compiled(mod_k,bin)
+
+#def W_py_2(mod_k,bin):
+#    return Lambda_Ev(W_integral_data, mod_k, r1=com_zbin[bin], r2=com_zbin[bin+1])
 
 # bin_pairs is a matrix of dim (2, N_pairs)
 # One column of 'allPairs_comDist' contains (R_i, R_j, R_i+1, R_j+1). Every colum represent a bin_pair (i,j). Same for 'allPairs_comVol' but there just (i,j).
@@ -149,7 +154,7 @@ def K_FFTconvolution(bin_pairs, mods_k, **cosmo_params):
 
     # Compute comov. distances and volumes:
     bins = np.arange(bin_pairs.min(),bin_pairs.max()+1)
-    com_distances = comov_dist(np.concatenate((bins,[bins[-1]+1])),**cosmo_params)
+    com_distances = comov_dist(z_in[np.concatenate((bins,[bins[-1]+1]))],**cosmo_params)
     com_volumes = vol_spherical_shell(bins,**cosmo_params)
     # For each pair:
     allPairs_bins = np.row_stack((bin_pairs, bin_pairs+1))
@@ -161,13 +166,17 @@ def K_FFTconvolution(bin_pairs, mods_k, **cosmo_params):
 
     # Compute K(mods_k) for each pair:
     allPairs_mods_k = np.tile(mods_k, (bin_pairs.shape[1],1))
+
+    #print "W:"
+    #print Lambda_Ev(W_integral_data, mods_k, r1=com_distances[0], r2=com_distances[1])[:10]
+    #print Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[0], r2=allPairs_comDist[2])[0,:10]
+    #print "done"
     result_matrix = Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[0], r2=allPairs_comDist[2]) * Lambda_Ev(W_integral_data, allPairs_mods_k[idxMat_bin,idxMat_k], r1=allPairs_comDist[1], r2=allPairs_comDist[3])
-    #results = (2./ (PI*np.sqrt(np.prod(allPairs_comVol,axis=0))) * result_matrix.T).T
-    results = ( (4*PI)*(4*PI) / np.prod(allPairs_comVol,axis=0) * result_matrix.T).T
+    results = (2./ (PI*np.sqrt(np.prod(allPairs_comVol,axis=0))) * result_matrix.T).T
 
     # Adjust zero mods_k:
     idxs_zerok = tuple((mods_k==0).nonzero()[0])
-    results = np.insert(results.T, idxs_zerok, 1., axis=0).T
+    results = np.insert(results.T, idxs_zerok, np.sqrt(np.prod(allPairs_comVol,axis=0))/gsl_pow_3(2*PI), axis=0).T
 
     return results
 
@@ -278,6 +287,8 @@ cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
     return mu_der_lnH(mu)*lnH_der_data[var_num][bin] + mu_der_lnD(mu)*lnD_der_data[var_num][bin]
 cdef double k_der(double mu, double k, np.intp_t bin, np.intp_t var_num):
     return k_der_lnH(mu,k)*lnH_der_data[var_num][bin] + k_der_lnD(mu,k)*lnD_der_data[var_num][bin]
+
+
 
 
 # Checking AP numer. derivative:
