@@ -468,6 +468,20 @@ cdef:
 #----------------------------------------------------
 
 #*****************************
+# set_FM_vars(**args)
+#*****************************
+#
+
+def set_FM_vars(vars=available_FM_vars):
+    global FM_vars_numbers, N_cosm_vars
+    N_cosm_vars = len(vars)
+    FM_vars_numbers = [0]*len(vars)
+    for i, var in enumerate(vars):
+        FM_vars_numbers[i] = n_FM_vars[var]
+
+set_FM_vars() #This should be put in the init function...
+
+#*****************************
 # set_ref_values(**args)
 #*****************************
 #
@@ -584,8 +598,8 @@ def compute_survey_DATA():
 
     # Correlation matrices initialisation:
     print " - correlation's matrices initialisation..."
-    global N_tot_vars, sqrt_volume_shells
-    N_tot_vars = N_cosm_vars + N_bins
+    global sqrt_volume_shells
+    #N_tot_vars = N_cosm_vars + N_bins
     sqrt_volume_shells = np.zeros([N_bins, N_bins])
     for bin1 in range(N_bins):
         for bin2 in range(bin1,N_bins):

@@ -380,7 +380,7 @@ cdef double DER(double k, double mu, int var_num, int bin1, int bin2):
     elif var_num+1==6: #sigma8
         return der_sigma8(bin1,bin2,k,mu)
     else: #bias
-        bin_bias = var_num-N_cosm_vars
+        bin_bias = var_num-N_cosm_vars_max
         return der_bias(bin1,bin2,k,mu,bin_bias)
 
 
@@ -433,16 +433,16 @@ cdef double trace(double k, double mu, int var1, int var2):
     #
     else:
         # Check if some element of the matrix is zero anyway:
-        if var1>=N_cosm_vars and var2>=N_cosm_vars and var1!=var2:
+        if var1>=N_cosm_vars_max and var2>=N_cosm_vars_max and var1!=var2:
             return 0.
         else:
             # Optimise the sum over bins:
-            if var1>N_cosm_vars:
-                bin = var1-N_cosm_vars # bin_bias
+            if var1>N_cosm_vars_max:
+                bin = var1-N_cosm_vars_max # bin_bias
                 # return DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
                 return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
-            elif var2>N_cosm_vars:
-                bin = var2-N_cosm_vars # bin_bias
+            elif var2>N_cosm_vars_max:
+                bin = var2-N_cosm_vars_max # bin_bias
                 # return  DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
                 return vol_shell(bin) * DER(k, mu, var1, bin, bin) * DER(k, mu, var2, bin, bin) * (n_dens_c[bin]/(n_dens_c[bin]*observed_spectrum(bin,bin,k,mu)+1))**2
             else:
@@ -759,6 +759,7 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
 def FM(check_AP=0, FMname="test", type_FM_input="correlations+windowFun", N_bins_correlations = N_bins, fixed_kmax=0.2):
 
     print "\nComputing Fisher matrix..."
+    N_tot_vars = N_cosm_vars + N_bins
     FM = np.zeros([N_tot_vars,N_tot_vars])
 
     # Resetting matrices:
@@ -769,15 +770,17 @@ def FM(check_AP=0, FMname="test", type_FM_input="correlations+windowFun", N_bins
     C_v = C
 
     # Computing:
-    for var1 in range(N_tot_vars):
-        for var2 in range(var1,N_tot_vars):
-            # start = time.clock()
-            FM[var1,var2]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
-            # stop = time.clock()
-            FM[var2,var1]=FM[var1,var2]
-            np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
-            # print "(%d, %d) --> %g (%g sec.)" %(var1,var2,FM[var1,var2],(stop-start))
+    var_numbers = FM_vars_numbers + range(N_cosm_vars_max,N_cosm_vars_max+N_bins)
+    for i, var1 in enumerate(var_numbers):
+        for j, var2 in zip(range(i,N_tot_vars),var_numbers[i:]):
+            FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
+            FM[j,i]=FM[i,j]
+            if 'correlations' in type_FM_input:
+                np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+    if 'correlations' not in type_FM_input:
+        np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
     return FM
+
 
 
 

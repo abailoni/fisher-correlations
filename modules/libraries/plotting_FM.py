@@ -274,11 +274,12 @@ def plot_fcts(axis, x, ys, **plot_kargs):
             axis.set_xscale('symlog')
         else:
             axis.set_xscale('log')
-    if 'y' in plot_kargs['log']:
-        if 'symy' in plot_kargs['log']:
-            axis.set_yscale('symlog')
-        else:
-            axis.set_yscale('log')
+    if 'symy' in plot_kargs['log']:
+        axis.set_yscale('symlog')
+    elif 'symx' in plot_kargs['log']:
+        print "boh"
+    elif 'y' in plot_kargs['log']:
+        axis.set_yscale('log')
     if plot_kargs["xrange"]!=0:
         axis.set_xlim(plot_kargs["xrange"])
     if plot_kargs["yrange"]!=0:
