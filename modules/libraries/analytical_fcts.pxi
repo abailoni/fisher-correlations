@@ -187,7 +187,7 @@ def K_FFTconvolution(bin_pairs, mods_k, **cosmo_params):
 #    return 1./vol_shell_mod(bin)*W_compiled(k_modulus, com_zbin[bin],com_zbin[bin+1])
 
 cdef double K(double mod_k, int bin1, int bin2):
-    if mod_k!=0:
+    if mod_k>1e-6:
         return 1./(vol_shell_mod(bin1)*vol_shell_mod(bin2)) * W_compiled(mod_k,bin1) * W_compiled(mod_k,bin2)
     else:
         return 1.
@@ -278,9 +278,14 @@ def lnD_der(z,var):
 def Fun_der_num(fun,z,var): # for G, H and D_a
     """ The input z can be a vector """
     return (fun(z,**{var: ref_values[var]+epsilon}) - fun(z,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
-def Fun_der_num_bins(fun,bin, var):
+def Fun_der_num_bins(fun,bin, var): # for beta
     """ The input bin can be a vector """
     return (fun(bin,**{var: ref_values[var]+epsilon}) - fun(bin,**{var: ref_values[var]-epsilon}) ) / (2*epsilon)
+def Fun_der_redshift(fun,z,**cosmo_params):  # for G, H and D_a
+    """ The input z can be a vector """
+    return (fun(z+epsilon,**cosmo_params) - fun(z-epsilon,**cosmo_params)) / (2*epsilon)
+
+
 
 # Derivative of mu wrt the four parameters: # num_var = [3-5] + gamma
 cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
