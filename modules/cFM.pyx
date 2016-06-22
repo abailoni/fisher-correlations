@@ -29,7 +29,6 @@ def init():
 
 
 
-
 #---------------------------------------
 # COMPUTING INTEGRAL 1:
 #---------------------------------------
@@ -235,44 +234,46 @@ def windowed_numerical_paramDER_py(k,bin1,bin2,var):
         return windowed_numerical_paramDER(k,bin1,bin2,var)
 
 cdef double spectrum(double k, int bin1, int bin2):
+    if "correlations" not in typeFM and bin1!=bin2:
+        return 0.
     if "windowFun" in typeFM:
         return windowed_zeroSpectrum(k,bin1,bin2)
     else:
-        if "stramberia" in typeFM:
-            if bin1!=bin2:
-                return windowed_zeroSpectrum(k,bin1,bin2)
         return zero_spectrum(k)
 
 # THIS REPETITION OF CODE IS AWFUL....
 def spectrum_py(k,bin1,bin2):
     """ Vectorized """
+    if "correlations" not in typeFM and bin1!=bin2:
+        if numpy_check(k):
+            return np.zeros(k.shape)
+        else:
+            return 0.
     if "windowFun" in typeFM:
         return windowed_zeroSpectrum_py(k,bin1,bin2)
     else:
-        if "stramberia" in typeFM:
-            if bin1!=bin2:
-                return windowed_zeroSpectrum_py(k,bin1,bin2)
         return zero_spectrum_py(k)
 
 
 
 cdef double numerical_paramDER(double k, int bin1, int bin2, int var): #var [0-3]
+    if "correlations" not in typeFM and bin1!=bin2:
+        return 0.
     if "windowFun" in typeFM:
         return windowed_numerical_paramDER(k,bin1,bin2,var)
     else:
-        if "stramberia" in typeFM:
-            if bin1!=bin2:
-                return windowed_numerical_paramDER(k,bin1,bin2,var)
         return CAMB_numerical_paramDER(k,var+1)
 
 def numerical_paramDER_py(k,bin1,bin2,var):
     """ Vectorized """
+    if "correlations" not in typeFM and bin1!=bin2:
+        if numpy_check(k):
+            return np.zeros(k.shape)
+        else:
+            return 0.
     if "windowFun" in typeFM:
         return windowed_numerical_paramDER_py(k,bin1,bin2,var)
     else:
-        if "stramberia" in typeFM:
-            if bin1!=bin2:
-                return windowed_numerical_paramDER_py(k,bin1,bin2,var)
         return CAMB_numerical_paramDER_py(k,var+1)
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
@@ -455,31 +456,94 @@ cdef double trace(double k, double mu, int var1, int var2):
                 # print "Everything: %g sec" %(tock-tick)
                 return result
 
-
-
 def trace_py(k,mu,var1,var2):
     return trace(k,mu,var1,var2)
+# ------------------------------------------
+# Adding redshift dependence:
+# ------------------------------------------
+cdef:
+    double[::1] Growth_der_redshift # N_bins
 
-# Just for the adaptive sampling and interpolation: (ks is a vector!)
-# It computes the log for a better sampling
-def trace_log_args(ks,**args):
-    Nk = ks.shape[0]
-    args_names = ['mu', 'var1', 'var2']
-    args_values = [0.]*3
-    for i, arg_name in enumerate(args_names):
-        if arg_name in args:
-            args_values[i] = args[arg_name]
-        else:
-            print "Error trace: not all the args received!"
-    results = np.empty(Nk)
-    for i, k in enumerate(ks):
-        result = trace(k,args_values[0],args_values[1],args_values[2])
-        results[i] = result
-        # if result>0:
-        #     results[i] = np.log10(result)
-        # else:
-        #     results[i] = -np.log10(-result)
-    return results
+
+def compute_data_adding_z():
+    global Growth_der_redshift
+    Growth_der_redshift = Fun_der_redshift(Growth,z_avg)
+
+
+def obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin):
+    return observed_spectrum(bin1,bin2,k,mu) * Growth_bins[der_bin] * Growth_der_redshift[der_bin]
+
+def sigma_redshift(bin):
+    return (com_zbin[bin+1]-com_zbin[bin])/2.
+
+
+def trace_adding_z(double k, double mu, int var1, int var2):
+    N_tot_vars = N_cosm_vars + N_bins
+
+    # Check if both are cosmo. params:
+    if var1<N_tot_vars and var2<N_tot_vars:
+        return trace(k,mu,var1,var2)
+
+    inverse_C = inverse_matrix_C(k, mu) * sqrt_volume_shells
+    global P_der_1, P_der_2, P_der_1_v, P_der_2_v
+
+    # Compute first derivative matrix:
+    if var1>=N_tot_vars:
+        redshift1 = var1 - N_tot_vars
+        P_der_1 = np.zeros((N_bins,N_bins))
+        P_der_1_v = P_der_1
+        for bin2 in range(N_bins):
+            if bin2!=redshift1: # zero w/o correlations
+                P_der_1_v[redshift1,bin2] = obsSpectr_redshift_der(redshift1,bin2,k,mu,redshift1)
+                P_der_1_v[bin2,redshift1] = P_der_1_v[redshift1,bin2]
+            else:
+                P_der_1_v[bin2,bin2] = 2 * obsSpectr_redshift_der(bin2,bin2,k,mu,bin2)
+    else:
+        derivative_matrices(k, mu, var1, P_der_1_v)
+
+    # Compute second derivative matrix:
+    if var2>=N_tot_vars:
+        redshift2 = var2 - N_tot_vars
+        P_der_2 = np.zeros((N_bins,N_bins))
+        P_der_2_v = P_der_2
+        for bin2 in range(N_bins):
+            if redshift2!=bin2:
+                P_der_2_v[redshift2,bin2] = obsSpectr_redshift_der(redshift2,bin2,k,mu,redshift2)
+                P_der_2_v[bin2,redshift2] = P_der_2_v[redshift2,bin2]
+            else:
+                P_der_2_v[bin2,bin2] = 2 * obsSpectr_redshift_der(bin2,bin2,k,mu,bin2)
+    else:
+        derivative_matrices(k, mu, var2, P_der_2_v)
+
+    #Compute trace:
+    result = np.dot(P_der_1, np.dot(inverse_C, np.dot(P_der_2,inverse_C))).trace()
+
+    return result
+
+# ------------------------------------------
+# ------------------------------------------
+
+
+# # Just for the adaptive sampling and interpolation: (ks is a vector!)
+# # It computes the log for a better sampling
+# def trace_log_args(ks,**args):
+#     Nk = ks.shape[0]
+#     args_names = ['mu', 'var1', 'var2']
+#     args_values = [0.]*3
+#     for i, arg_name in enumerate(args_names):
+#         if arg_name in args:
+#             args_values[i] = args[arg_name]
+#         else:
+#             print "Error trace: not all the args received!"
+#     results = np.empty(Nk)
+#     for i, k in enumerate(ks):
+#         result = trace(k,args_values[0],args_values[1],args_values[2])
+#         results[i] = result
+#         # if result>0:
+#         #     results[i] = np.log10(result)
+#         # else:
+#         #     results[i] = -np.log10(-result)
+#     return results
 
 # cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
 #     inverse_C_v = inverse_matrix_C(k, mu)
@@ -676,10 +740,10 @@ cdef double argument_mu(double mu, void *input): #k, var1, var2, #bin_kmax
     if abs(mode_kmax)<1e-10: # is zero
         return( k*k * trace_part(k,mu,<int>params[1],<int>params[2],<int>params[3]) )
     else:
-        if interpolate_Trace:
-            return k*k * interp_trace(k,mu,<int>params[1],<int>params[2])
-        else:
-            return k*k * trace(k,mu,<int>params[1],<int>params[2])
+        # if interpolate_Trace:
+        #     return k*k * interp_trace(k,mu,<int>params[1],<int>params[2])
+        # else:
+        return k*k * trace_adding_z(k,mu,<int>params[1],<int>params[2])
 
 cdef double argument_k(double k, void *input): #var1, var2, bin_kmax
     cdef double params[4]
@@ -724,7 +788,6 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
 
     cdef gsl_function F_k
     F_k.function = &argument_k
-    # Let's laugh... :/ --> IT WORKS!! :D (Apparently)
     cdef:
         double params[3]
         double FM_elem = 0
@@ -741,6 +804,11 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
             FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, k_max_int, abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC_K)
     else:
         FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, fixed_kmax, abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC_K)
+
+    # Adding redshift dependence:
+    N_tot_vars = N_cosm_vars + N_bins
+    if var1==var2 and var1>=N_tot_vars:
+        FM_elem += 1./sigma_redshift(var1-N_tot_vars)**2
     return FM_elem
 
 
@@ -752,11 +820,11 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
 #  - uncorrelated
 #  - correlations
 #  - windowFun
-#  - correlations+windowFun (default)
+#  - correlations+windowFun
 #
 
 
-def FM(check_AP=0, FMname="test", type_FM_input="correlations+windowFun", N_bins_correlations = N_bins, fixed_kmax=0.2):
+def FM(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = N_bins, fixed_kmax=0.2):
 
     print "\nComputing Fisher matrix..."
     N_tot_vars = N_cosm_vars + N_bins
@@ -781,12 +849,41 @@ def FM(check_AP=0, FMname="test", type_FM_input="correlations+windowFun", N_bins
         np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
     return FM
 
+def FM_plusRedshift(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = N_bins, fixed_kmax=0.2):
 
+    print "\nComputing Fisher matrix..."
+    N_tot_vars = N_cosm_vars + N_bins
+    FM_dimension = N_tot_vars + N_bins
+    FM = np.zeros([FM_dimension,FM_dimension])
+
+    # Resetting matrices:
+    global P_der_1, P_der_1_v, P_der_2, P_der_2_v, C, C_v
+    P_der_1, P_der_2 = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
+    P_der_1_v, P_der_2_v = P_der_1, P_der_2
+    C = np.zeros([N_bins, N_bins])
+    C_v = C
+
+    # Computing:
+    var_numbers = FM_vars_numbers + range(N_cosm_vars_max,N_cosm_vars_max+2*N_bins)
+    for i, var1 in enumerate(var_numbers):
+        for j, var2 in zip(range(i,FM_dimension),var_numbers[i:]):
+            FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
+            FM[j,i]=FM[i,j]
+            if 'correlations' in type_FM_input:
+                np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+    if 'correlations' not in type_FM_input:
+        np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+    return FM
 
 
 def set_typeFM(type_FM_input):
     global typeFM
     typeFM = type_FM_input
+
+
+
+# include "libraries/adding-z.pyx"
+
 
 # #################
 # PLOTTING TRACE:
