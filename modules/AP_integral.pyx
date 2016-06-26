@@ -39,8 +39,8 @@ cdef:
     double abs_prec_k1 = 1e-8
     double rel_prec_mu1 = 1e-5
     double abs_prec_mu1 = 1e-14
-    double rel_prec_phi1 = 1e-3
-    double abs_prec_phi1 = 1e-8
+    # double rel_prec_phi1 = 1e-3
+    # double abs_prec_phi1 = 1e-8
 
     # Others:
     # double kp_max = 0.56, kp_min = 2e-4
@@ -59,15 +59,14 @@ W_phi1 = gsl_integration_workspace_alloc(MAX_ALLOC)
 # Arguments of the integrals:
 gsl_set_error_handler_off()
 
-cdef double arg_integral_phi1(double phi1, void *inputs): #k, k1, mu, mu1, bin1, _phi1bin2
-    cdef:
-        double *params = <double*> inputs
-        double k = params[0], k1 = params[1]
-        double mu = params[2], mu1 = params[3]
-        int bin1 = <int> params[4], bin2 = <int> params[5]
-    cdef double square_root = sqrt(k*k + k1*k1 + 2*k*k1* (mu*mu1 + cos(phi1)*sqrt( (1-mu*mu)*(1-mu1*mu1) )  ))
-    return K(square_root,bin1,bin2)
-
+# cdef double arg_integral_phi1(double phi1, void *inputs): #k, k1, mu, mu1, bin1, _phi1bin2
+#     cdef:
+#         double *params = <double*> inputs
+#         double k = params[0], k1 = params[1]
+#         double mu = params[2], mu1 = params[3]
+#         int bin1 = <int> params[4], bin2 = <int> params[5]
+#     cdef double square_root = sqrt(k*k + k1*k1 + 2*k*k1* (mu*mu1 + cos(phi1)*sqrt( (1-mu*mu)*(1-mu1*mu1) )  ))
+#     return K(square_root,bin1,bin2)
 
 
 cdef double arg_integral_mu1(double mu1, void *inputs): #k, k1, mu, bin1, bin2, num_var
@@ -75,15 +74,13 @@ cdef double arg_integral_mu1(double mu1, void *inputs): #k, k1, mu, bin1, bin2, 
         double *params = <double*> inputs
         double k = params[0], k1 = params[1], mu = params[2]
         int bin1 = <int> params[3], bin2 = <int> params[4], num_var = <int> params[5]
-        double params_int_phi1[6]
 
-    params_int_phi1[0], params_int_phi1[1], params_int_phi1[2], params_int_phi1[3], params_int_phi1[4], params_int_phi1[5] = k, k1, mu, mu1, bin1, bin2
-    cdef gsl_function F_phi
-    F_phi.function = &arg_integral_phi1
-    cdef double integral_phi1 = eval_integration_GSL(0., 2*PI, abs_prec_phi1, rel_prec_phi1, params_int_phi1, W_phi1, &F_phi, MAX_ALLOC)
+    # This works only with bin1=bin2:
+    cdef double integral_phi1 = Lambda_Ev(phi1_intregral_data, k1, mu1, mu, lnH_der_data[num_var][bin1], lnD_der_data[num_var][bin1])
+    cdef double square_root = sqrt(k*k + k1*k1 -2*k*k1*mu1)
+    return integral_phi1 * K(square_root,bin1,bin2)
 
-    # This works only with bin1=bin2: (CHECK NUM_VAR..)
-    return k_der(mu1, k1, bin1, num_var) * integral_phi1
+
 
 
 cdef double arg_integral_k1(double k1, void *inputs): #k, mu, bin1, bin2, num_var
@@ -150,21 +147,11 @@ def AP_integral(int num_var, int bin1, int bin2, vect_k = np.concatenate((np.lin
     np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d-mu%g_intAP.csv" %(bin1,bin2,num_var,mu), integral)
     return integral
 
-def compute_AP_integral(var, bin1, bin2):
+def compute_AP_integral(var, bin):
 
-    # In order to get a smooth sampling of the function, the sampling
-    # points k depends on bin1 and bin2.
-    bin_diff = abs(bin1-bin2) # from 0 to N_bins-1
-    if bin1==bin2 or bin_diff==1:
-        vect_k = np.concatenate((np.linspace(k_min,0.2,130), np.linspace(0.2,0.5,60)[1:]))
-    else: # No longer used
-        max1, max2 = 0.01, 0.1
-        x = (bin_diff-2.)/(N_bins-3.) # 0 for similar bins, 1 for distant ones
-        max1 = max1*(4-3*x) # max1 for distant bins, 4*max1 for similar ones
-        max2 = max2*(4-3*x)
-        vect_k = np.concatenate((np.linspace(k_min,max1,60), np.linspace(max1,max2,60)[1:], np.linspace(max2,0.5,20)[1:]))
+    vect_k = np.logspace(np.log10(1e-3),np.log10(2e-1), 130)
 
-    integral1 = AP_integral(var,bin1,bin2,vect_k)
+    integral1 = AP_integral(var,bin,bin,vect_k)
 
 def wrapper_intAP(var, bin1, bin2,kmin,kmax,Nk):
     vect_k=np.linspace(kmin,kmax,Nk)

@@ -35,6 +35,19 @@ def varExprNames(expression):
     return [var_name for var_name in variables_Str]
 
 
+# CONCLUSIONS:
+#  - lambda much faster to compile
+#  - of the same order on the single evaluation (if lambda set not to 'numpy').
+#           Lambda slightly better (?!?!)
+#  - vectorized of the same order (ufun. slightly better)
+#  - single evaluation of lambda is much worse with 'numpy' option
+#
+# Lambda single evaluation:
+# 0.00319492 sec. without 'numpy' option
+# 0.011193 sec.  with 'numpy' option
+
+
+
 # --------------------------------------
 # THE UFUNCIFY EVALUATION FUNCTION:
 # --------------------------------------
@@ -76,6 +89,7 @@ def varExprNames(expression):
 #
 # MISSING:
 #   - Missing optimisation of the input types (float64, etc...)
+
 
 
 def SymToUfuncify(expression,**args):

@@ -421,6 +421,20 @@ def density_advanced_py(z_in): # EUCLID-2012
     return results
 
 
+# AP integral:
+# Sympy variables:
+phi1Sy, k1Sy, mu1Sy, muSy, lnH_Sy, lnD_Sy  = sym.symbols(' phi1Sy k1Sy mu1Sy muSy lnH_Sy lnD_Sy')
+
+old_mu_squared = (1-muSy*muSy)*(1-mu1Sy*mu1Sy)*sym.cos(phi1Sy)**2 + (muSy*mu1Sy)**2 + 2 * (muSy*sym.sqrt(1-muSy**2)) * (mu1Sy*sym.sqrt(1-mu1Sy**2)) * sym.cos(phi1Sy)
+
+
+k_der_sym = (lnH_Sy * k1Sy * old_mu_squared ) + (lnD_Sy * k1Sy * (old_mu_squared-1.))
+
+phi1_intregral = sym.integrate(k_der_sym, (phi1Sy, 0., 2*PI))
+phi1_intregral_data = SymToLambda(phi1_intregral,order_vars=["k1Sy", "mu1Sy", "muSy", "lnH_Sy", "lnD_Sy"])
+
+
+
 #**************************************************************
 #**************************************************************
 #
