@@ -15,8 +15,8 @@ include "libraries/header.pxi"
 # include "libraries/import_CLASS.pxi"
 
 include "libraries/CAMB.pxi"
-
 include "libraries/analytical_fcts.pxi"
+include "libraries/import_AP_integrals.pxi"
 
 # It does all the first necessary things:
 def init():
@@ -24,8 +24,8 @@ def init():
     # import_zero_spectrum_der_k()
     compute_survey_DATA()
     store_conv_spectra()
+    # import_AP_int()
     # store_int1()
-
 
 
 
@@ -158,13 +158,15 @@ def store_int1_test():
 #-----------------------------------------------
 # COMPUTING AP term: (simple way for the moment) ---> the only way
 #-----------------------------------------------
+
+#  WRONG! No longer used...
 # k-derivative of the convolved spectrum:
 cdef double conv_spectrum_der_k(double k, int bin1, int bin2):
     return gsl_spline_eval_deriv(integral_1_tools[bin1][bin2][0].spline, k, integral_1_tools[bin1][bin2][0].acc)
 
 cdef double spectrum_der_k(double k, int bin1, int bin2):
     if "windowFun" in typeFM:
-        return conv_spectrum_der_k(k,bin1,bin2)
+        return conv_spectrum_der_k(k,bin1,bin2) # WRONG
     else:
         return zero_spectrum_der_k(k)
 
@@ -282,6 +284,7 @@ def numerical_paramDER_py(k,bin1,bin2,var):
 cdef double observed_spectrum(int bin1, int bin2, double k, double mu):
     return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum(k,bin1,bin2)
 
+
 def observed_spectrum_py(bin1,bin2,k,mu):
     """ Vectorized """
     return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum_py(k,bin1,bin2)
@@ -300,6 +303,7 @@ cdef double observed_terms(int bin1, int bin2, double k, double mu):
 # h and n_s: (optimized!) (var 0-1)
 cdef double der_type_A(int bin1, int bin2, double k, double mu, int var_num):
     return  observed_terms(bin1, bin2, k, mu)*numerical_paramDER(k, bin1, bin2, var_num)
+
 
 
 
@@ -324,10 +328,17 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     # OLD  with dP/dk:
     # cdef double AP_term = check_AP * spectrum_der_k(k,bin1,bin2) * sqrt(k_der(mu,k,bin1,var_num)*k_der(mu,k,bin2,var_num))
 
-    # New with dlnP/dk
-    cdef double AP_k_term = check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num) if bin1==bin2 else 0.
+    cdef double AP_k_term = 0.
+    if AP_flag:
+        if "windowFun" not in typeFM:
+            AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num)
+        else:
+            var = names_vars[var_num]
+            AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * AP_integral[var][bin1](k,mu)
+    # cdef double AP_k_term = check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num) if bin1==bin2 else 0.
 
-    return observed_terms(bin1, bin2, k, mu) * ( CLASS_term) + observed_spectrum(bin1, bin2, k, mu) * ( AP_k_term + lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
+    return observed_terms(bin1, bin2, k, mu)*CLASS_term + AP_k_term + observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
+
 
 
 # # Gamma: (optimized!) (var=6)
@@ -335,7 +346,12 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 #     # Pay attention to lnH_der_data that are computed in z_avg....
 #     return(observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[6][bin1]+lnG_der_data[6][bin2] + 1./(1+beta_bins[bin1]*mu**2)*(mu**2*Beta_der_data[6][bin1]) + 1./(1+beta_bins[bin2]*mu**2)*(mu**2*Beta_der_data[6][bin2])) )
 
-
+def ciao():
+    k1 = 0.1
+    mu1 = 0.5
+    mu = 0.5
+    integral_phi1 = Lambda_Ev(phi1_intregral_data, k1, mu1, mu, lnH_der_data[num_var][bin1], lnD_der_data[num_var][bin1])
+    integral_
 
 # Sigma8: (optimized!) (var=5)
 cdef double der_sigma8(int bin1, int bin2, double k, double mu):
@@ -837,6 +853,13 @@ def FM(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = 
     C = np.zeros([N_bins, N_bins])
     C_v = C
 
+    # Checking AP and import AP_integrals:
+    if check_AP!=0:
+        import_AP_int()
+        if "correlations" in type_FM_input:
+            print "Error: correlations not implemented with AP term"
+            return -1
+
     # Computing:
     var_numbers = FM_vars_numbers + range(N_cosm_vars_max,N_cosm_vars_max+N_bins)
     for i, var1 in enumerate(var_numbers):
@@ -844,10 +867,13 @@ def FM(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = 
             FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
             FM[j,i]=FM[i,j]
             if 'correlations' in type_FM_input:
-                np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+                np.savetxt("OUTPUT/FM_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+            if check_AP:
+                print "(%d,%d)" %(i,j)
     if 'correlations' not in type_FM_input:
-        np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+        np.savetxt("OUTPUT/FM_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
     return FM
+
 
 def FM_plusRedshift(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = N_bins, fixed_kmax=0.2):
 
@@ -870,9 +896,9 @@ def FM_plusRedshift(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_co
             FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
             FM[j,i]=FM[i,j]
             if 'correlations' in type_FM_input:
-                np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+                np.savetxt("OUTPUT/FM_plusRedshift_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
     if 'correlations' not in type_FM_input:
-        np.savetxt("OUTPUT/FMcorr_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+        np.savetxt("OUTPUT/FM_plusRedshift_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
     return FM
 
 

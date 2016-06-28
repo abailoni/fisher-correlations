@@ -183,6 +183,7 @@ cdef double zero_spectrum(double k):
     if k<k_min:
         return 0.
     else:
+        # Note that it is interpolated as dlnP/dlnk
         return exp(eval_interp_GSL(log(k), &zero_spectrum_tools))
 
 def zero_spectrum_py(k):

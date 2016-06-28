@@ -293,6 +293,8 @@ cdef double mu_der(double mu, np.intp_t bin, np.intp_t var_num):
 cdef double k_der(double mu, double k, np.intp_t bin, np.intp_t var_num):
     return k_der_lnH(mu,k)*lnH_der_data[var_num][bin] + k_der_lnD(mu,k)*lnD_der_data[var_num][bin]
 
+def k_der_py(mu,k,bin,var_num):
+    return k_der(mu,k,bin,var_num)
 
 
 
