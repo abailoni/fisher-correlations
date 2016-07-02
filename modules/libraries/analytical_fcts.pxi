@@ -126,7 +126,7 @@ cdef double vol_shell_mod(int bin):
 
 # Fourier transform of the top-hat function:
 r, k, kp, r1, r2, r3, r4 = sym.symbols('r k kp r1 r2 r3 r4')
-W_integral = sym.integrate( sym.sin(r*k)* r**2 / (k*r), (r,r1,r2)  )
+W_integral = sym.integrate( sym.sin(r*k)* r**2 / (k*r), (r,r1,r2),conds='none')
 
 # Lambdify optimized to be used in a vectorized way. See K_FFTconvolution()
 W_integral_data = SymToLambda(W_integral,numpy=True,order_vars=['k'],r1=1.,r2=1.)

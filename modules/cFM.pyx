@@ -122,7 +122,7 @@ def test_integral_1(bin1,bin2,name_var,vect_k = np.linspace(0.0,0.5,10000)):
 
 # Storing and interpolating int1 with GSL:
 cdef enum:
-    max_N_bins = 50
+    max_N_bins = 250
 
 cdef:
     interpolation_tools integral_1_tools[max_N_bins][max_N_bins][N_vars]
@@ -334,7 +334,10 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
             AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num)
         else:
             var = names_vars[var_num]
-            AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * AP_integral[var][bin1](k,mu)
+            if bin1==bin2:
+                AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * AP_integral[var][bin1](k,mu)
+            else:
+                AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * AP_integral_corr[var][bin1](k,mu) + observed_spectrum(bin1, bin2, k, mu) * 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1] - lnH_der_data[var_num][bin2] + 2*lnD_der_data[var_num][bin2])
     # cdef double AP_k_term = check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num) if bin1==bin2 else 0.
 
     return observed_terms(bin1, bin2, k, mu)*CLASS_term + AP_k_term + observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
@@ -474,6 +477,8 @@ cdef double trace(double k, double mu, int var1, int var2):
 
 def trace_py(k,mu,var1,var2):
     return trace(k,mu,var1,var2)
+
+
 # ------------------------------------------
 # Adding redshift dependence:
 # ------------------------------------------
@@ -494,18 +499,18 @@ def sigma_redshift(bin):
 
 
 def trace_adding_z(double k, double mu, int var1, int var2):
-    N_tot_vars = N_cosm_vars + N_bins
+    N_tot_vars_max = N_cosm_vars_max + N_bins
 
     # Check if both are cosmo. params:
-    if var1<N_tot_vars and var2<N_tot_vars:
+    if var1<N_tot_vars_max and var2<N_tot_vars_max:
         return trace(k,mu,var1,var2)
 
     inverse_C = inverse_matrix_C(k, mu) * sqrt_volume_shells
     global P_der_1, P_der_2, P_der_1_v, P_der_2_v
 
     # Compute first derivative matrix:
-    if var1>=N_tot_vars:
-        redshift1 = var1 - N_tot_vars
+    if var1>=N_tot_vars_max:
+        redshift1 = var1 - N_tot_vars_max
         P_der_1 = np.zeros((N_bins,N_bins))
         P_der_1_v = P_der_1
         for bin2 in range(N_bins):
@@ -518,8 +523,8 @@ def trace_adding_z(double k, double mu, int var1, int var2):
         derivative_matrices(k, mu, var1, P_der_1_v)
 
     # Compute second derivative matrix:
-    if var2>=N_tot_vars:
-        redshift2 = var2 - N_tot_vars
+    if var2>=N_tot_vars_max:
+        redshift2 = var2 - N_tot_vars_max
         P_der_2 = np.zeros((N_bins,N_bins))
         P_der_2_v = P_der_2
         for bin2 in range(N_bins):
@@ -728,6 +733,8 @@ cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
 #--------------------------------------------------------------
 #--------------------------------------------------------------
 
+# Default values are set in set_kargs_FM():
+rel_prec, abs_prec, rel_prec_redshift, abs_prec_redshift = 0., 0., 0., 0.
 
 
 # Integration variables:
@@ -737,10 +744,8 @@ cdef enum:
 cdef:
     size_t MAX_ALLOC = max_alloc_const
     size_t MAX_ALLOC_K = max_alloc_const_K
-    double rel_prec = 1e-2
-    double abs_prec = 100
-    # double rel_prec = 1e-6
-    # double abs_prec = 1e-6
+
+
 cdef:
     gsl_integration_workspace * W_k
     gsl_integration_workspace * W_mu
@@ -764,12 +769,20 @@ cdef double argument_mu(double mu, void *input): #k, var1, var2, #bin_kmax
 cdef double argument_k(double k, void *input): #var1, var2, bin_kmax
     cdef double params[4]
     cdef double *vars = <double*>input
+    var1, var2 = vars[0], vars[1]
     cdef gsl_function F_mu
     F_mu.function = &argument_mu
-    params[0], params[1], params[2], params[3] = k, vars[0], vars[1], vars[2]
-    cdef double result = eval_integration_GSL(-1., 1., abs_prec, rel_prec, params, W_mu, &F_mu, MAX_ALLOC)
-    # print "(%g,   %g) "%(k, result)
+    params[0], params[1], params[2], params[3] = k, var1, var2, vars[2]
+
+    # Redshift dependence: (adjust integral prec.)
+    FM_mu_absPrec, FM_mu_relPrec = abs_prec, rel_prec
+    N_tot_vars_max = N_cosm_vars_max + N_bins
+    if var1>=N_tot_vars_max and var2>=N_tot_vars_max:
+        FM_mu_absPrec, FM_mu_relPrec = abs_prec_redshift, rel_prec_redshift
+
+    cdef double result = eval_integration_GSL(-1., 1., FM_mu_absPrec, FM_mu_relPrec, params, W_mu, &F_mu, MAX_ALLOC)
     return result
+
 
 
 
@@ -786,21 +799,62 @@ typeFM = "uncorr"
 
 k_min_hard = 5e-3
 k_max_hard = 0.5
-def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="uncorr", N_bins_correlations = N_bins, double fixed_kmax=0.2):
-    global AP_flag, mode_kmax
-    AP_flag=check_AP
-    mode_kmax = fixed_kmax
 
-    global typeFM, CORR_BINS
-    # interpolate_Trace = interp_Tr
-    CORR_BINS = N_bins_correlations
-    typeFM = type_FM_input
-    # BEST SOLUTION: interpolate Trace before and only check if it's there!
-    # if interpolate_Trace:
-    #     init_Trace() # Compute or import interpolation
-    # TEMP: (!!)
-    # if interpolate_Trace:
-    #     init_Trace_term(var1,var2)
+
+def set_kargs_FM(**kargs):
+    global AP_flag, typeFM, CORR_BINS, mode_kmax
+
+    # AP effect:
+    AP_flag = kargs["check_AP"] if "check_AP" in kargs else False
+
+    # Type of FM:
+    typeFM = kargs["typeFM"] if "typeFM" in kargs else "uncorr"
+
+    # Adjustable k_max FM: (not-working at the moment..)
+    mode_kmax = kargs["fixed_kmax"] if "fixed_kmax" in kargs else 0.2
+
+    # Number of correlated bins:
+    if "num_corr_bins" in kargs:
+        CORR_BINS = kargs["num_corr_bins"]
+    elif "Delta_z_correlations" in kargs:
+        delta_bin = z_in[1]-z_in[0]
+        division = kargs["Delta_z_correlations"] / delta_bin
+        if division>1.:
+            CORR_BINS = int(division)+1 if (division%int(division))>0.25 else int(division)
+        else:
+            CORR_BINS = 1 # Keep at least one correlation
+    else:
+        CORR_BINS = N_bins
+    kargs["num_corr_bins"] = CORR_BINS
+
+    # k_min and k_max:
+    global k_min_hard, k_max_hard
+    k_min_hard = kargs["k_min_hard"] if "k_min_hard" in kargs else 5e-3
+    k_max_hard = kargs["k_max_hard"] if "k_max_hard" in kargs else 0.5
+
+    # Integral's precisions: (add separate k and mu...)
+    global rel_prec, abs_prec
+    global rel_prec_redshift, abs_prec_redshift
+    rel_prec = kargs["rel_prec"] if "rel_prec" in kargs else 1e-2
+    abs_prec = kargs["abs_prec"] if "abs_prec" in kargs else 100.
+    rel_prec_redshift = kargs["rel_prec_redshift"] if "rel_prec_redshift" in kargs else 1e-6
+    abs_prec_redshift = kargs["abs_prec_redshift"] if "abs_prec_redshift" in kargs else 1e-2
+
+    # Redshift dependence:
+    if "z_dependence" not in kargs:
+        kargs["z_dependence"] = False
+    elif kargs["z_dependence"]==True:
+        # Compute only at the beginning, not for every FM element:
+        if "FM_elem" not in kargs:
+            compute_data_adding_z()
+
+    return kargs
+
+
+
+def fisher_matrix_element(int var1, int var2, **kargs):
+    kargs["FM_elem"] = True
+    kargs = set_kargs_FM(**kargs)
 
     cdef gsl_function F_k
     F_k.function = &argument_k
@@ -808,7 +862,17 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
         double params[3]
         double FM_elem = 0
     params[0], params[1] = var1, var2
-    # Sum all the integrals with different k_max:
+    FM_k_absPrec, FM_k_relPrec = abs_prec, rel_prec
+
+    # Adding redshift dependence:
+    N_tot_vars_max = N_cosm_vars_max + N_bins
+    if var1==var2 and var1>=N_tot_vars_max:
+        FM_elem += 1./sigma_redshift(var1-N_tot_vars_max)**2
+    if var1>=N_tot_vars_max and var2>=N_tot_vars_max:
+        FM_k_absPrec, FM_k_relPrec = abs_prec_redshift, rel_prec_redshift
+
+
+    # Sum all the integrals with different k_max: (NOT WORKING)
     # trace_part() takes care of selecting the appropriate terms of the trace
     if abs(mode_kmax)<1e-10: # is zero
         for bin_max in range(N_bins):
@@ -817,14 +881,10 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
             else:
                 k_max_int=k_max_hard
             params[2] = bin_max
-            FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, k_max_int, abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC_K)
+            FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, k_max_int, FM_k_absPrec, FM_k_relPrec, params, W_k, &F_k, MAX_ALLOC_K)
     else:
-        FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, fixed_kmax, abs_prec, rel_prec, params, W_k, &F_k, MAX_ALLOC_K)
+        FM_elem += 1./(8*np.pi**2) * eval_integration_GSL(k_min_hard, mode_kmax, FM_k_absPrec, FM_k_relPrec, params, W_k, &F_k, MAX_ALLOC_K)
 
-    # Adding redshift dependence:
-    N_tot_vars = N_cosm_vars + N_bins
-    if var1==var2 and var1>=N_tot_vars:
-        FM_elem += 1./sigma_redshift(var1-N_tot_vars)**2
     return FM_elem
 
 
@@ -834,17 +894,26 @@ def fisher_matrix_element(int var1, int var2, int check_AP=0, type_FM_input="unc
 #
 # Types available:
 #  - uncorrelated
-#  - correlations
 #  - windowFun
 #  - correlations+windowFun
+#  - correlations (not really...)
 #
 
 
-def FM(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = N_bins, fixed_kmax=0.2):
 
-    print "\nComputing Fisher matrix..."
-    N_tot_vars = N_cosm_vars + N_bins
-    FM = np.zeros([N_tot_vars,N_tot_vars])
+def FM(FMname=time.strftime("%d-%m-%y")+"_"+time.strftime("%H-%M"),**kargs):
+
+    kargs = set_kargs_FM(**kargs)
+    print "\nComputing Fisher matrix... (type: %s)" %(typeFM)
+    if kargs["z_dependence"]==True:
+        print "--> Redshift dependence added to FM"
+    if "correlations" in typeFM:
+        print "--> Num. correlated bins: %d" %(CORR_BINS)
+
+
+    FM_dim_max = N_cosm_vars_max + N_bins if not kargs["z_dependence"] else N_cosm_vars_max + 2*N_bins
+    FM_dim = N_cosm_vars+N_bins if not kargs["z_dependence"] else N_cosm_vars+2*N_bins
+    FM = np.zeros((FM_dim,FM_dim))
 
     # Resetting matrices:
     global P_der_1, P_der_1_v, P_der_2, P_der_2_v, C, C_v
@@ -854,57 +923,79 @@ def FM(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = 
     C_v = C
 
     # Checking AP and import AP_integrals:
-    if check_AP!=0:
-        import_AP_int()
-        if "correlations" in type_FM_input:
-            print "Error: correlations not implemented with AP term"
+    if AP_flag:
+        if "correlations" in typeFM and (CORR_BINS>1 or N_bins!=14):
+            print "Error: correlations not computed for the selected case. Use the AP module before."
             return -1
+        print "--> AP effect included"
+        import_AP_int()
 
     # Computing:
-    var_numbers = FM_vars_numbers + range(N_cosm_vars_max,N_cosm_vars_max+N_bins)
+    var_numbers = FM_vars_numbers + range(N_cosm_vars_max,FM_dim_max)
     for i, var1 in enumerate(var_numbers):
-        for j, var2 in zip(range(i,N_tot_vars),var_numbers[i:]):
-            FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
+        for j, var2 in zip(range(i,FM_dim),var_numbers[i:]):
+            tick = time.time()
+            FM[i,j]=fisher_matrix_element(var1,var2,**kargs)
+            tock = time.time()
             FM[j,i]=FM[i,j]
-            if 'correlations' in type_FM_input:
-                np.savetxt("OUTPUT/FM_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
-            if check_AP:
-                print "(%d,%d)" %(i,j)
-    if 'correlations' not in type_FM_input:
-        np.savetxt("OUTPUT/FM_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+            if "verbose" in kargs:
+                print "(%d,%d) --> %g sec." %(i,j,tock-tick)
+            if 'correlations' in typeFM:
+                np.savetxt("OUTPUT/FM_%s_AP%d-zDep%d-%dbins-%s.csv" %(FMname,AP_flag,kargs["z_dependence"],N_bins,typeFM), FM)
+                if N_bins>25:
+                    print "(%d,%d) --> %g sec." %(i,j,tock-tick)
+    if 'correlations' not in typeFM:
+        np.savetxt("OUTPUT/FM_%s_AP%d-zDep%d-%dbins-%s.csv" %(FMname,AP_flag,kargs["z_dependence"],N_bins,typeFM), FM)
     return FM
 
-
-def FM_plusRedshift(check_AP=0, FMname="test", type_FM_input="uncorr", N_bins_correlations = N_bins, fixed_kmax=0.2):
-
-    print "\nComputing Fisher matrix..."
-    N_tot_vars = N_cosm_vars + N_bins
-    FM_dimension = N_tot_vars + N_bins
-    FM = np.zeros([FM_dimension,FM_dimension])
-
-    # Resetting matrices:
-    global P_der_1, P_der_1_v, P_der_2, P_der_2_v, C, C_v
-    P_der_1, P_der_2 = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
-    P_der_1_v, P_der_2_v = P_der_1, P_der_2
-    C = np.zeros([N_bins, N_bins])
-    C_v = C
-
-    # Computing:
-    var_numbers = FM_vars_numbers + range(N_cosm_vars_max,N_cosm_vars_max+2*N_bins)
-    for i, var1 in enumerate(var_numbers):
-        for j, var2 in zip(range(i,FM_dimension),var_numbers[i:]):
-            FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,N_bins_correlations,fixed_kmax)
-            FM[j,i]=FM[i,j]
-            if 'correlations' in type_FM_input:
-                np.savetxt("OUTPUT/FM_plusRedshift_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
-    if 'correlations' not in type_FM_input:
-        np.savetxt("OUTPUT/FM_plusRedshift_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
-    return FM
 
 
 def set_typeFM(type_FM_input):
     global typeFM
     typeFM = type_FM_input
+
+
+# def FM_plusRedshift(FMname="test",**kargs):
+
+#     set_kargs_FM(**kargs)
+
+#     print "\nComputing Fisher matrix (redshift). Type: %s" %(typeFM)
+#     N_tot_vars = N_cosm_vars + N_bins
+#     FM_dimension = N_tot_vars + N_bins
+#     FM = np.zeros([FM_dimension,FM_dimension])
+
+#     # Resetting matrices:
+#     global P_der_1, P_der_1_v, P_der_2, P_der_2_v, C, C_v
+#     P_der_1, P_der_2 = np.zeros([N_bins, N_bins]), np.zeros([N_bins, N_bins])
+#     P_der_1_v, P_der_2_v = P_der_1, P_der_2
+#     C = np.zeros([N_bins, N_bins])
+#     C_v = C
+
+#     if Delta_z_correlations<0:
+#         num_corr_bins = N_bins
+#     else:
+#         delta_bin = z_in[1]-z_in[0]
+#         division = Delta_z_correlations / delta_bin
+#         if division>1.:
+#             num_corr_bins = int(division)+1 if (division%int(division))>0.25 else int(division)
+#         else:
+#             num_corr_bins = 1
+#         print "Num. correlated bins: %d" %(num_corr_bins)
+
+
+#     # Computing:
+#     var_numbers = FM_vars_numbers + range(N_cosm_vars_max,N_cosm_vars_max+2*N_bins)
+#     for i, var1 in enumerate(var_numbers):
+#         for j, var2 in zip(range(i,FM_dimension),var_numbers[i:]):
+#             FM[i,j]=fisher_matrix_element(var1,var2,check_AP,type_FM_input,num_corr_bins,fixed_kmax)
+#             FM[j,i]=FM[i,j]
+#             if 'correlations' in type_FM_input:
+#                 np.savetxt("OUTPUT/FM_plusRedshift_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+#     if 'correlations' not in type_FM_input:
+#         np.savetxt("OUTPUT/FM_plusRedshift_%s_AP%d-%dbins-%s.csv" %(FMname,check_AP,N_bins,type_FM_input), FM)
+#     return FM
+
+
 
 
 

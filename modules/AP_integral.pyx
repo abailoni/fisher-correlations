@@ -75,11 +75,11 @@ cdef double arg_integral_mu1(double mu1, void *inputs): #k, k1, mu, bin1, bin2, 
         double k = params[0], k1 = params[1], mu = params[2]
         int bin1 = <int> params[3], bin2 = <int> params[4], num_var = <int> params[5]
 
-    # This works only with bin1=bin2:
+    # The k-derivative is done wrt the first bin:
     cdef double integral_phi1 = Lambda_Ev(phi1_intregral_data, k1, mu1, mu, lnH_der_data[num_var][bin1], lnD_der_data[num_var][bin1])
     cdef double square_root = sqrt(k*k + k1*k1 -2*k*k1*mu1)
+    # Here the AP factor in W_2(k) is neglected:
     return integral_phi1 * K(square_root,bin1,bin2)
-
 
 
 
@@ -141,31 +141,36 @@ def AP_integral(int num_var, int bin1, int bin2, vect_k = np.concatenate((np.lin
                 stop = time.clock()
                 print "Bin: %d; (k,mu)=(%g, %g) --> %g --> %g sec." %(bin1,k,mu,integral[j_mu,i],stop-start)
             if (count%10==0):
-                    np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d-mu%g_intAP.csv" %(bin1,bin2,num_var,mu), integral)
+                    np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d_intAP.csv" %(bin1,bin2,num_var), integral)
             count+=1
-        np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d-mu%g_intAP.csv" %(bin1,bin2,num_var,mu), integral)
-    np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d-mu%g_intAP.csv" %(bin1,bin2,num_var,mu), integral)
+        np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d_intAP.csv" %(bin1,bin2,num_var), integral)
+    np.savetxt(PATH_WINDOWED_SPECTRA+"%d_%d-var%d_intAP.csv" %(bin1,bin2,num_var), integral)
     return integral
 
-def compute_AP_integral(var, bin):
-
+# Compute diagonal terms:
+def compute_AP_integral(var, bin):  # bin: [0, N_bins-1]
     vect_k = np.logspace(np.log10(1e-3),np.log10(2e-1), 130)
-
     integral1 = AP_integral(var,bin,bin,vect_k)
 
-def wrapper_intAP(var, bin1, bin2,kmin,kmax,Nk):
-    vect_k=np.linspace(kmin,kmax,Nk)
-    integral = AP_integral(var,bin1,bin2,vect_k)
+# Compute the first correlations:
+def compute_AP_correlations(var, bin): # bin: [0, N_bins-2]
+    vect_k = np.logspace(np.log10(1e-3),np.log10(2e-1), 130)
+    AP_integral(var,bin,bin+1,vect_k)
 
-    fig2=pl.figure()
-    ax1=fig2.add_subplot(111)
-    ax1.plot(vect_k,integral,'r-',label="Int_DER")
-    # ax1.set_xlabel("$k$ [$h$/Mpc]")
-    # ax1.set_ylabel("[Mpc/$h$]^3")
-    ax1.grid(True)
-    ax1.legend(loc='best')
-    fig2.savefig('plots/int1/%d%d_var%d.pdf' %(bin1,bin2,var))
-    return
+
+# def wrapper_intAP(var, bin1, bin2,kmin,kmax,Nk):
+#     vect_k=np.linspace(kmin,kmax,Nk)
+#     integral = AP_integral(var,bin1,bin2,vect_k)
+
+#     fig2=pl.figure()
+#     ax1=fig2.add_subplot(111)
+#     ax1.plot(vect_k,integral,'r-',label="Int_DER")
+#     # ax1.set_xlabel("$k$ [$h$/Mpc]")
+#     # ax1.set_ylabel("[Mpc/$h$]^3")
+#     ax1.grid(True)
+#     ax1.legend(loc='best')
+#     fig2.savefig('plots/int1/%d%d_var%d.pdf' %(bin1,bin2,var))
+#     return
 
 
 
