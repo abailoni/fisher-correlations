@@ -52,6 +52,9 @@ def sigma1_ellipse(FM_matrix, num_var1, num_var2, scal=1.52):
         sub_matrix = np.rot90(sub_matrix, k=2)
 
     eigvals, eigvects = np.linalg.eig(sub_matrix)
+    # print "Eigen:"
+    # print eigvals
+    # print "."
 
     # Angle:
     for j in range(eigvects.shape[1]): # check columns
@@ -197,6 +200,8 @@ def ellipses_onePlot(axis, matrices, var1, var2, **plot_kargs):
         axis.set_ylabel("$%s$" %(plot_kargs["xyLabels"][1]), size=plot_kargs["label_size"])
     axis.grid(True)
     axis.legend(loc=plot_kargs['legend'])
+    if "title" in plot_kargs:
+        axis.set_title(plot_kargs["title"])
 
     return axis
 
@@ -208,17 +213,29 @@ def ellipses_varsGrid(matrices, vars=var_names, x_offsetGrid=0, y_offsetGrid=0, 
 
     # Create grid:
     gs = gridspec.GridSpec(x_offsetGrid+Nvars-1, y_offsetGrid+Nvars-1)
-    axes = []
+    # gs.update(left=0.05, right=0.48, wspace=0.05)
+    axes =  [[0. for x in range(Nvars)] for y in range(Nvars)] #Dim. not imp.
 
     # Print ellipses:
-    plot_kargs["xyLabels"] = ["",""]
     for j, var1 in enumerate(vars[:-1]):
         for i, var2 in zip(range(j,Nvars),vars[1+j:]):
-            ax_ij = pl.subplot(gs[x_offsetGrid+i, j])
-            plot_kargs['xyLabels'][0] = var1 if i==Nvars-2 else ""
-            plot_kargs['xyLabels'][1] = var2 if j==0 else ""
-            axes.append( ellipses_onePlot(ax_ij, matrices, var1, var2, **plot_kargs) )
-    return gs
+            # Share axes:
+            shareAxes_kargs = {}
+            if i!=j:
+                shareAxes_kargs["sharex"]=axes[j][j]
+            if j!=0:
+                shareAxes_kargs["sharey"]=axes[i][0]
+            # Create new plot:
+            axes[i][j] = pl.subplot(gs[x_offsetGrid+i, j],**shareAxes_kargs)
+            ellipses_onePlot(axes[i][j], matrices, var1, var2, **plot_kargs)
+            # Delete labels and tickslabels:
+            if i!=Nvars-2:
+                axes[i][j].set_xlabel("")
+                pl.setp(axes[i][j].get_xticklabels(), visible=False)
+            if j!=0:
+                axes[i][j].set_ylabel("")
+                pl.setp(axes[i][j].get_yticklabels(), visible=False)
+    return gs, axes
 
 
 
@@ -233,11 +250,12 @@ def gaussian_matplot(axis, matrices, var, **plot_kargs):
     # Compute uncertainty:
     sigmas = np.array([ uncertainty(matrix,var) for matrix in matrices])
     mu = ref_values[var]
-    x_vect = np.linspace(mu-np.max(sigmas)*2, mu+np.max(sigmas)*2,3000)
+    x_vect = np.linspace(mu-np.max(sigmas)*3, mu+np.max(sigmas)*3,3000)
     ys = [gaussian(x_vect,mu,sigma) for sigma in sigmas]
 
     # Plot:
     plot_kargs["yrange"] = [0,1.1]
+    plot_kargs["xrange"] = [mu-np.max(sigmas)*2, mu+np.max(sigmas)*2]
     if "xyLabels" not in plot_kargs:
         plot_kargs["xyLabels"] = ["$%s$" %(var),""]
 
@@ -245,14 +263,20 @@ def gaussian_matplot(axis, matrices, var, **plot_kargs):
 
 
 # It needs a grid with both x-offset and y-offset set to 1, resulting from ellipses_varsGrid()
-def insert_gaussians_into_varsGrid(grid,matrices,vars=var_names,**plot_kargs):
+def insert_gaussians_into_varsGrid(Grid,axes,matrices,vars=var_names,**plot_kargs):
     Nvars = len(vars)
     for i, var in enumerate(vars):
+        # Set lables and axis:
         if i==Nvars-1:
             plot_kargs["xyLabels"] = ["$%s$" %(var),""]
+            ax_ii = pl.subplot(Grid[i, i])
         else:
+            ax_ii = pl.subplot(Grid[i, i], sharex=axes[Nvars-2][i])
+            pl.setp(ax_ii.get_xticklabels(), visible=False)
             plot_kargs["xyLabels"] = ["",""]
-        ax_ii = pl.subplot(grid[i, i])
+        pl.setp(ax_ii.get_yticklabels(), visible=False)
+
+        # Plot gaussian:
         gaussian_matplot(ax_ii,matrices,var,**plot_kargs)
 
 
@@ -322,12 +346,23 @@ def FOM(FM_matrices, vars_num):
     for FM_matrix in FM_matrices:
         sub_matrix = np.linalg.inv(marginalise(FM_matrix,vars_num))
         results.append(np.sqrt(np.linalg.det(sub_matrix)))
+
+        sub_matrix = marginalise(FM_matrix,vars_num)
+        # if num_var1>num_var2:
+        #     sub_matrix = np.rot90(sub_matrix, k=2)
+
+        eigvals, eigvects = np.linalg.eig(FM_matrix)
+        print FM_matrix.shape
+        print "Eigen:"
+        print eigvals
+        print "."
+
     return results
 
 def FOM_total(FM_matrices):
     results = []
     for FM_matrix in FM_matrices:
         # inv_matrix = np.linalg.inv(FM_matrix)
-        results.append(np.sqrt(np.linalg.det(inv_matrix)))
+        results.append(np.sqrt(np.linalg.det(FM_matrix)))
     return results
 

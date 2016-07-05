@@ -453,6 +453,7 @@ cdef:
     double[::1] com_zbin_avg # N_bins
     #double[::1] DA_zbin = np.array([ D_a(zbn) for zbn in z_in])
     double[::1] Growth_bins # N_bins
+    double[::1] H_bins # N_bins
     double[::1] beta_bins # N_bins
     double[:,::1] lnG_der_data # N_vars x N_bins
     double[:,::1] Beta_der_data # N_vars x N_bins
@@ -573,9 +574,10 @@ def compute_survey_DATA():
     # Distances:
     print "\nComputing survey data:"
     print " - distances..."
-    global com_zbin, com_zbin_avg
+    global com_zbin, com_zbin_avg, H_bins
     com_zbin = comov_dist(z_in)
     com_zbin_avg = np.array([ (com_zbin[i]+com_zbin[i+1])/2. for i in range(N_bins)])
+    H_bins = Hubble(z_avg)
 
     # Derivatives and funtions:
     print " - derivatives..."
@@ -611,6 +613,10 @@ def compute_survey_DATA():
     # Densities:
     global n_dens_c
     n_dens_c = efficiency*n_dens*1e-3
+
+    # Redshift distortion:
+    global redshift_sigma
+    redshift_sigma = (z_in[1]-z_in[0])/2.
 
     ## k_max:
     #print " - k_max at each z..."

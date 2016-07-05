@@ -280,14 +280,19 @@ def numerical_paramDER_py(k,bin1,bin2,var):
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
 #--------------------------------------------------------------
+# Redshift distortion: (argument exponential)
+cdef double redshift_exp(int bin1, int bin2, double k, double mu):
+    return exp( -0.5*gsl_pow_2(k*mu*redshift_sigma) * ( gsl_pow_2((1+z_avg[bin1])/H_bins[bin1]) + gsl_pow_2((1+z_avg[bin2])/H_bins[bin2]) ) )
+
+
 # Observed spectrum: (optimized!)
 cdef double observed_spectrum(int bin1, int bin2, double k, double mu):
-    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum(k,bin1,bin2)
+    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum(k,bin1,bin2) * redshift_exp(bin1,bin2,k,mu)
 
-
+# NOT VECTORIZED...
 def observed_spectrum_py(bin1,bin2,k,mu):
     """ Vectorized """
-    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum_py(k,bin1,bin2)
+    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * spectrum_py(k,bin1,bin2)* redshift_exp(bin1,bin2,k,mu)
 
 def growth_spectrum_py(bin1,bin2,k,typeFM_input):
     """ Vectorized """
@@ -298,7 +303,10 @@ def growth_spectrum_py(bin1,bin2,k,typeFM_input):
 # Observed terms: (optimized!)
 # to avoid division by zero given by windowed_Spectrum with i!=j
 cdef double observed_terms(int bin1, int bin2, double k, double mu):
-    return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2)
+    if "correlations" not in typeFM and bin1!=bin2:
+        return 0.
+    else:
+        return Growth_bins[bin1]*Growth_bins[bin2] * bias_bins[bin1]*bias_bins[bin2]* (1+beta_bins[bin1]*mu**2)*(1+beta_bins[bin2]*mu**2) * redshift_exp(bin1,bin2,k,mu)
 
 # h and n_s: (optimized!) (var 0-1)
 cdef double der_type_A(int bin1, int bin2, double k, double mu, int var_num):
@@ -321,6 +329,10 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
     # cdef double beta_term = mu_num_term(k, mu, bin1, var_num)
 
 
+    # Redshift distortion term:
+    redshift_distortion = k*mu * gsl_pow_2(redshift_sigma*(1+z_avg[bin1])/H_bins[bin1]) * ( k*mu*lnH_der_data[var_num][bin1] -check_AP*mu*k_der(mu,k,bin1,var_num) -check_AP*k*mu_der(mu,bin1,var_num) + k*mu*lnH_der_data[var_num][bin2] -check_AP*mu*k_der(mu,k,bin2,var_num) -check_AP*k*mu_der(mu,bin2,var_num))
+
+
     # AP TERM for k:
     # check_AP = 0. # PUT ALWAYS TO ZERO
     # cdef double AP_term = check_AP * Pk_AP_num_der(k, mu, bin1, var_num)
@@ -340,7 +352,7 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
                 AP_k_term = observed_terms(bin1, bin2, k, mu) * check_AP * AP_integral_corr[var][bin1](k,mu) + observed_spectrum(bin1, bin2, k, mu) * 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1] - lnH_der_data[var_num][bin2] + 2*lnD_der_data[var_num][bin2])
     # cdef double AP_k_term = check_AP * spectrum_der_k(k,bin1,bin2) * k_der(mu,k,bin1,var_num) if bin1==bin2 else 0.
 
-    return observed_terms(bin1, bin2, k, mu)*CLASS_term + AP_k_term + observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term  )
+    return observed_terms(bin1, bin2, k, mu)*CLASS_term + AP_k_term + observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[var_num][bin1]+lnG_der_data[var_num][bin2] + 1/2.*(lnH_der_data[var_num][bin1] - 2*lnD_der_data[var_num][bin1]) + 1/2.*(lnH_der_data[var_num][bin2] - 2*lnD_der_data[var_num][bin2]) + beta_term + zDist_flag*redshift_distortion)
 
 
 
@@ -349,12 +361,12 @@ cdef double der_type_B(int bin1, int bin2, double k, double mu, int var_num):
 #     # Pay attention to lnH_der_data that are computed in z_avg....
 #     return(observed_spectrum(bin1, bin2, k, mu) * (lnG_der_data[6][bin1]+lnG_der_data[6][bin2] + 1./(1+beta_bins[bin1]*mu**2)*(mu**2*Beta_der_data[6][bin1]) + 1./(1+beta_bins[bin2]*mu**2)*(mu**2*Beta_der_data[6][bin2])) )
 
-def ciao():
-    k1 = 0.1
-    mu1 = 0.5
-    mu = 0.5
-    integral_phi1 = Lambda_Ev(phi1_intregral_data, k1, mu1, mu, lnH_der_data[num_var][bin1], lnD_der_data[num_var][bin1])
-    integral_
+# def ciao():
+#     k1 = 0.1
+#     mu1 = 0.5
+#     mu = 0.5
+#     integral_phi1 = Lambda_Ev(phi1_intregral_data, k1, mu1, mu, lnH_der_data[num_var][bin1], lnD_der_data[num_var][bin1])
+#     integral_
 
 # Sigma8: (optimized!) (var=5)
 cdef double der_sigma8(int bin1, int bin2, double k, double mu):
@@ -492,7 +504,12 @@ def compute_data_adding_z():
 
 
 def obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin):
-    return observed_spectrum(bin1,bin2,k,mu) * Growth_bins[der_bin] * Growth_der_redshift[der_bin]
+    result = 0.
+    if bin1==der_bin:
+        result+=observed_spectrum(bin1,bin2,k,mu) * (Growth_bins[bin1] * Growth_der_redshift[bin1])
+    if bin2==der_bin:
+        result+=observed_spectrum(bin1,bin2,k,mu) * (Growth_bins[bin2] * Growth_der_redshift[bin2])
+    return result
 
 def sigma_redshift(bin):
     return (com_zbin[bin+1]-com_zbin[bin])/2.
@@ -510,29 +527,25 @@ def trace_adding_z(double k, double mu, int var1, int var2):
 
     # Compute first derivative matrix:
     if var1>=N_tot_vars_max:
-        redshift1 = var1 - N_tot_vars_max
+        der_bin = var1 - N_tot_vars_max
         P_der_1 = np.zeros((N_bins,N_bins))
         P_der_1_v = P_der_1
-        for bin2 in range(N_bins):
-            if bin2!=redshift1: # zero w/o correlations
-                P_der_1_v[redshift1,bin2] = obsSpectr_redshift_der(redshift1,bin2,k,mu,redshift1)
-                P_der_1_v[bin2,redshift1] = P_der_1_v[redshift1,bin2]
-            else:
-                P_der_1_v[bin2,bin2] = 2 * obsSpectr_redshift_der(bin2,bin2,k,mu,bin2)
+        for bin1 in range(N_bins):
+            for bin2 in range(N_bins):
+                P_der_1_v[bin1,bin2] = obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin)
+                P_der_1_v[bin2,bin1] = P_der_1_v[bin1,bin2]
     else:
         derivative_matrices(k, mu, var1, P_der_1_v)
 
     # Compute second derivative matrix:
     if var2>=N_tot_vars_max:
-        redshift2 = var2 - N_tot_vars_max
+        der_bin = var2 - N_tot_vars_max
         P_der_2 = np.zeros((N_bins,N_bins))
         P_der_2_v = P_der_2
-        for bin2 in range(N_bins):
-            if redshift2!=bin2:
-                P_der_2_v[redshift2,bin2] = obsSpectr_redshift_der(redshift2,bin2,k,mu,redshift2)
-                P_der_2_v[bin2,redshift2] = P_der_2_v[redshift2,bin2]
-            else:
-                P_der_2_v[bin2,bin2] = 2 * obsSpectr_redshift_der(bin2,bin2,k,mu,bin2)
+        for bin1 in range(N_bins):
+            for bin2 in range(N_bins):
+                P_der_2_v[bin1,bin2] = obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin)
+                P_der_2_v[bin2,bin1] = P_der_2_v[bin1,bin2]
     else:
         derivative_matrices(k, mu, var2, P_der_2_v)
 
@@ -793,6 +806,7 @@ cdef:
     double mode_kmax # 0 for k_max(z), number for fixed k_max
 
 AP_flag = False
+zDist_flag = False
 interpolate_Trace = False
 # typeFM = "correlations+windowFun"
 typeFM = "uncorr"
@@ -802,10 +816,12 @@ k_max_hard = 0.5
 
 
 def set_kargs_FM(**kargs):
-    global AP_flag, typeFM, CORR_BINS, mode_kmax
+    global AP_flag, typeFM, CORR_BINS, mode_kmax, zDist_flag
 
     # AP effect:
     AP_flag = kargs["check_AP"] if "check_AP" in kargs else False
+    zDist_flag = kargs["zDistortion"] if "zDistortion" in kargs else False
+
 
     # Type of FM:
     typeFM = kargs["typeFM"] if "typeFM" in kargs else "uncorr"
@@ -840,6 +856,7 @@ def set_kargs_FM(**kargs):
     rel_prec_redshift = kargs["rel_prec_redshift"] if "rel_prec_redshift" in kargs else 1e-6
     abs_prec_redshift = kargs["abs_prec_redshift"] if "abs_prec_redshift" in kargs else 1e-2
 
+
     # Redshift dependence:
     if "z_dependence" not in kargs:
         kargs["z_dependence"] = False
@@ -866,10 +883,10 @@ def fisher_matrix_element(int var1, int var2, **kargs):
 
     # Adding redshift dependence:
     N_tot_vars_max = N_cosm_vars_max + N_bins
-    if var1==var2 and var1>=N_tot_vars_max:
-        FM_elem += 1./sigma_redshift(var1-N_tot_vars_max)**2
     if var1>=N_tot_vars_max and var2>=N_tot_vars_max:
         FM_k_absPrec, FM_k_relPrec = abs_prec_redshift, rel_prec_redshift
+        if var1==var2:
+            FM_elem += 1./sigma_redshift(var1-N_tot_vars_max)**2
 
 
     # Sum all the integrals with different k_max: (NOT WORKING)
