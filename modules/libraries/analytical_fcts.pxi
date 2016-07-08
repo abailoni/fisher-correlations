@@ -445,6 +445,56 @@ phi1_intregral_data = SymToLambda(phi1_intregral,order_vars=["k1Sy", "mu1Sy", "m
 #**************************************************************
 #**************************************************************
 
+
+# OBJECT ORIENTED PROGRAMMING IN CYTHON:
+# several things are different from python classes
+cdef class Survey:
+    # In a cdef class everything must be declared here. I can not call a
+    # self.something_new directly in init()
+
+    # This is see only by cython:
+    cdef int ciao
+
+    # To make it visible by python:
+    # (not clear if an array would be in common between different objects like in normal python classes, but I don't think so....)
+    cdef public double bias_bins
+    cdef readonly float depth
+
+    # If I want a python object just declare:
+    cdef object lista
+
+    # These are readonly variables seen by everyone:
+    Nbins = 14
+    z_in = np.array([0.65, 0.75, 0.85, 0.95, 1.05, 1.15, 1.25, 1.35, 1.45, 1.55, 1.65, 1.75, 1.85, 1.95, 2.05])
+    n_dens = np.array([1.25, 1.92, 1.83, 1.68, 1.51, 1.35, 1.20, 1.00, 0.80, 0.58, 0.38, 0.35, 0.21, 0.11])
+    bias_bins_numpy = np.array([1.30, 1.34, 1.38, 1.41, 1.45, 1.48, 1.52, 1.55, 1.58, 1.61, 1.64, 1.67, 1.70, 1.73]) # N_bins
+
+
+    def __init__(self):
+        print "Ciao"
+    cpdef void set_bias(self, double bias):
+        self.bias_bins = bias
+    cdef set_BINS(self, N_bins):
+        self.Nbins = N_bins
+
+
+# Apparently I can create a python subclass of a cython class:
+class Survey2(Survey):
+    def __init__(self):
+        print "Ciao"
+
+class spectra:
+    def __init__(self, survey):
+        print survey.bias_bins
+        print "Ciao"
+
+class FM:
+    def __init__(self,survey):
+        print "Ciao"
+
+ciao = Survey()
+ciao.set_bias(4.)
+
 #-----------------------------------------
 # Cython memory views: (for storing data)
 #-----------------------------------------

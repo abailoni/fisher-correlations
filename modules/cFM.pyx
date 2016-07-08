@@ -512,7 +512,7 @@ def obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin):
     return result
 
 def sigma_redshift(bin):
-    return (com_zbin[bin+1]-com_zbin[bin])/2.
+    return (z_in[bin+1]-z_in[bin])/2.
 
 
 def trace_adding_z(double k, double mu, int var1, int var2):
@@ -527,25 +527,29 @@ def trace_adding_z(double k, double mu, int var1, int var2):
 
     # Compute first derivative matrix:
     if var1>=N_tot_vars_max:
-        der_bin = var1 - N_tot_vars_max
+        redshift1 = var1 - N_tot_vars_max
         P_der_1 = np.zeros((N_bins,N_bins))
         P_der_1_v = P_der_1
-        for bin1 in range(N_bins):
-            for bin2 in range(N_bins):
-                P_der_1_v[bin1,bin2] = obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin)
-                P_der_1_v[bin2,bin1] = P_der_1_v[bin1,bin2]
+        for bin2 in range(N_bins):
+            if bin2!=redshift1: # zero w/o correlations
+                P_der_1_v[redshift1,bin2] = obsSpectr_redshift_der(redshift1,bin2,k,mu,redshift1)
+                P_der_1_v[bin2,redshift1] = P_der_1_v[redshift1,bin2]
+            else:
+                P_der_1_v[bin2,bin2] = 2 * obsSpectr_redshift_der(bin2,bin2,k,mu,bin2)
     else:
         derivative_matrices(k, mu, var1, P_der_1_v)
 
     # Compute second derivative matrix:
     if var2>=N_tot_vars_max:
-        der_bin = var2 - N_tot_vars_max
+        redshift2 = var2 - N_tot_vars_max
         P_der_2 = np.zeros((N_bins,N_bins))
         P_der_2_v = P_der_2
-        for bin1 in range(N_bins):
-            for bin2 in range(N_bins):
-                P_der_2_v[bin1,bin2] = obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin)
-                P_der_2_v[bin2,bin1] = P_der_2_v[bin1,bin2]
+        for bin2 in range(N_bins):
+            if redshift2!=bin2:
+                P_der_2_v[redshift2,bin2] = obsSpectr_redshift_der(redshift2,bin2,k,mu,redshift2)
+                P_der_2_v[bin2,redshift2] = P_der_2_v[redshift2,bin2]
+            else:
+                P_der_2_v[bin2,bin2] = 2 * obsSpectr_redshift_der(bin2,bin2,k,mu,bin2)
     else:
         derivative_matrices(k, mu, var2, P_der_2_v)
 
@@ -747,7 +751,7 @@ cdef double trace_part(double k, double mu, int var1, int var2, int bin_kmax):
 #--------------------------------------------------------------
 
 # Default values are set in set_kargs_FM():
-rel_prec, abs_prec, rel_prec_redshift, abs_prec_redshift = 0., 0., 0., 0.
+rel_prec, abs_prec, rel_prec_redshift, abs_prec_redshift, rel_prec_redshift_cross, abs_prec_redshift_cross = 0., 0., 0., 0., 0., 0.
 
 
 # Integration variables:
@@ -792,6 +796,8 @@ cdef double argument_k(double k, void *input): #var1, var2, bin_kmax
     N_tot_vars_max = N_cosm_vars_max + N_bins
     if var1>=N_tot_vars_max and var2>=N_tot_vars_max:
         FM_mu_absPrec, FM_mu_relPrec = abs_prec_redshift, rel_prec_redshift
+    elif var1>=N_tot_vars_max or var2>=N_tot_vars_max:
+        FM_k_absPrec, FM_k_relPrec = abs_prec_redshift_cross, rel_prec_redshift_cross
 
     cdef double result = eval_integration_GSL(-1., 1., FM_mu_absPrec, FM_mu_relPrec, params, W_mu, &F_mu, MAX_ALLOC)
     return result
@@ -850,11 +856,14 @@ def set_kargs_FM(**kargs):
 
     # Integral's precisions: (add separate k and mu...)
     global rel_prec, abs_prec
-    global rel_prec_redshift, abs_prec_redshift
+    global rel_prec_redshift, abs_prec_redshift, rel_prec_redshift_cross, abs_prec_redshift_cross
     rel_prec = kargs["rel_prec"] if "rel_prec" in kargs else 1e-2
     abs_prec = kargs["abs_prec"] if "abs_prec" in kargs else 100.
-    rel_prec_redshift = kargs["rel_prec_redshift"] if "rel_prec_redshift" in kargs else 1e-6
+    rel_prec_redshift = kargs["rel_prec_redshift"] if "rel_prec_redshift" in kargs else 1e-4
     abs_prec_redshift = kargs["abs_prec_redshift"] if "abs_prec_redshift" in kargs else 1e-2
+    rel_prec_redshift_cross = kargs["rel_prec_redshift_cross"] if "rel_prec_redshift_cross" in kargs else 1e-2
+    abs_prec_redshift_cross = kargs["abs_prec_redshift_cross"] if "abs_prec_redshift_cross" in kargs else 1
+
 
 
     # Redshift dependence:
@@ -887,6 +896,8 @@ def fisher_matrix_element(int var1, int var2, **kargs):
         FM_k_absPrec, FM_k_relPrec = abs_prec_redshift, rel_prec_redshift
         if var1==var2:
             FM_elem += 1./sigma_redshift(var1-N_tot_vars_max)**2
+    elif var1>=N_tot_vars_max or var2>=N_tot_vars_max:
+        FM_k_absPrec, FM_k_relPrec = abs_prec_redshift_cross, rel_prec_redshift_cross
 
 
     # Sum all the integrals with different k_max: (NOT WORKING)
@@ -905,6 +916,7 @@ def fisher_matrix_element(int var1, int var2, **kargs):
     return FM_elem
 
 
+
 #------------------------
 # Computation of FM:
 #------------------------
@@ -917,7 +929,6 @@ def fisher_matrix_element(int var1, int var2, **kargs):
 #
 
 
-
 def FM(FMname=time.strftime("%d-%m-%y")+"_"+time.strftime("%H-%M"),**kargs):
 
     kargs = set_kargs_FM(**kargs)
@@ -926,6 +937,7 @@ def FM(FMname=time.strftime("%d-%m-%y")+"_"+time.strftime("%H-%M"),**kargs):
         print "--> Redshift dependence added to FM"
     if "correlations" in typeFM:
         print "--> Num. correlated bins: %d" %(CORR_BINS)
+
 
 
     FM_dim_max = N_cosm_vars_max + N_bins if not kargs["z_dependence"] else N_cosm_vars_max + 2*N_bins
@@ -947,6 +959,18 @@ def FM(FMname=time.strftime("%d-%m-%y")+"_"+time.strftime("%H-%M"),**kargs):
         print "--> AP effect included"
         import_AP_int()
 
+    # Some log:
+    if "log_file" in kargs:
+        logFile = open(kargs["log_file"],'a')
+        logFile.write("\nComputing Fisher matrix... (type: %s)\n" %(typeFM))
+        if kargs["z_dependence"]==True:
+            logFile.write("--> Redshift dependence added to FM\n")
+        if "correlations" in typeFM:
+            logFile.write("--> Num. correlated bins: %d\n" %(CORR_BINS) )
+        if AP_flag:
+            logFile.write("--> AP effect included\n")
+
+
     # Computing:
     var_numbers = FM_vars_numbers + range(N_cosm_vars_max,FM_dim_max)
     for i, var1 in enumerate(var_numbers):
@@ -955,6 +979,8 @@ def FM(FMname=time.strftime("%d-%m-%y")+"_"+time.strftime("%H-%M"),**kargs):
             FM[i,j]=fisher_matrix_element(var1,var2,**kargs)
             tock = time.time()
             FM[j,i]=FM[i,j]
+            if "log_file" in kargs:
+                logFile.write("\n(%d,%d) --> %g sec.\n" %(i,j,tock-tick))
             if "verbose" in kargs:
                 print "(%d,%d) --> %g sec." %(i,j,tock-tick)
             if 'correlations' in typeFM:

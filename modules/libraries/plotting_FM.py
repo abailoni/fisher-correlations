@@ -289,7 +289,7 @@ def plot_fcts(axis, x, ys, **plot_kargs):
     matplotlib.rc('font',**font_style)
 
     for y, label, color, lineStyle, opacity in zip(ys,plot_kargs['labels'],plot_kargs['colors'],plot_kargs['lineStyles'],plot_kargs['opacities']):
-        axis.plot(x,y,lineStyle+color,label=r'%s'%(label),alpha=opacity)
+        axis.plot(x,y,lineStyle,color=color,label=r'%s'%(label),alpha=opacity)
     if plot_kargs['grid']==True:
         axis.grid(True)
     axis.legend(loc=plot_kargs['legend'])
@@ -313,7 +313,37 @@ def plot_fcts(axis, x, ys, **plot_kargs):
 
     return axis
 
+def plot_fcts_PRO(axis, xs, ys, **plot_kargs):
+    plot_kargs = check_matplot_arguments("linePlot",**plot_kargs)
 
+    matplotlib.rcParams['text.usetex'] = True
+    font_style = {'weight' : 'normal', 'size': plot_kargs['ticks_size'],'family':'serif','serif':['Palatino']}
+    matplotlib.rc('font',**font_style)
+
+    for x, y, label, color, lineStyle, opacity in zip(xs,ys,plot_kargs['labels'],plot_kargs['colors'],plot_kargs['lineStyles'],plot_kargs['opacities']):
+        axis.plot(x,y,lineStyle,color=color,label=r'%s'%(label),alpha=opacity)
+    if plot_kargs['grid']==True:
+        axis.grid(True)
+    axis.legend(loc=plot_kargs['legend'])
+    if 'x' in plot_kargs['log']:
+        if 'symx' in plot_kargs['log']:
+            axis.set_xscale('symlog')
+        else:
+            axis.set_xscale('log')
+    if 'symy' in plot_kargs['log']:
+        axis.set_yscale('symlog')
+    elif 'symx' in plot_kargs['log']:
+        print "boh"
+    elif 'y' in plot_kargs['log']:
+        axis.set_yscale('log')
+    if plot_kargs["xrange"]!=0:
+        axis.set_xlim(plot_kargs["xrange"])
+    if plot_kargs["yrange"]!=0:
+        axis.set_ylim(plot_kargs["yrange"])
+    axis.set_xlabel(r'%s' %(plot_kargs['xyLabels'][0]),fontsize=plot_kargs["label_size"])
+    axis.set_ylabel(r'%s' %(plot_kargs['xyLabels'][1]),fontsize=plot_kargs["label_size"])
+
+    return axis
 
 
 
@@ -350,12 +380,6 @@ def FOM(FM_matrices, vars_num):
         sub_matrix = marginalise(FM_matrix,vars_num)
         # if num_var1>num_var2:
         #     sub_matrix = np.rot90(sub_matrix, k=2)
-
-        eigvals, eigvects = np.linalg.eig(FM_matrix)
-        print FM_matrix.shape
-        print "Eigen:"
-        print eigvals
-        print "."
 
     return results
 
