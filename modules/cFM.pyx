@@ -277,6 +277,9 @@ def numerical_paramDER_py(k,bin1,bin2,var):
         return windowed_numerical_paramDER_py(k,bin1,bin2,var)
     else:
         return CAMB_numerical_paramDER_py(k,var+1)
+
+def numerical_paramDER_growth_py(k,bin1,bin2,var):
+    return Growth_bins[bin1]*Growth_bins[bin2] * numerical_paramDER_py(k,bin1,bin2,var)
 #--------------------------------------------------------------
 # Contructing the final derivatives for the Fisher Matrix:
 #--------------------------------------------------------------
@@ -512,7 +515,7 @@ def obsSpectr_redshift_der(bin1,bin2,k,mu,der_bin):
     return result
 
 def sigma_redshift(bin):
-    return (z_in[bin+1]-z_in[bin])/2.
+    return (z_in[bin+1]-z_in[bin])/6.
 
 
 def trace_adding_z(double k, double mu, int var1, int var2):

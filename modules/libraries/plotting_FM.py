@@ -373,7 +373,8 @@ def plot_fcts_PRO(axis, xs, ys, **plot_kargs):
 
 def FOM(FM_matrices, vars_num):
     results = []
-    for FM_matrix in FM_matrices:
+    for i, FM_matrix in enumerate(FM_matrices):
+        print i
         sub_matrix = np.linalg.inv(marginalise(FM_matrix,vars_num))
         results.append(np.sqrt(np.linalg.det(sub_matrix)))
 

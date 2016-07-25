@@ -11,6 +11,8 @@ santiRESULTS/**
 modules/build/**
 INPUT/**
 OUTPUT/**
+RANDOM_CRAP/**
+OLD plot stuff/**
 
 # Not sure working:
 modules/*.so
