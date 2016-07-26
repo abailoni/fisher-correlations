@@ -3,4 +3,4 @@ Fisher matrix software that includes the effect of the top-hat window function a
 
 ##
 **Documentation:**
-Documentation and description of the module will be available soon.
+The documentation and description about how to install and use the module will be available soon.
